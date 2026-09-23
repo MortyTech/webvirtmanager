@@ -100,6 +100,32 @@ async def vm_detail(host: str, vm: str):
     raise HTTPException(404, detail=f"unknown vm: {vm}")
 
 
+@router.post("/hosts/{host}/vms/{vm}/vnc")
+async def vm_vnc(host: str, vm: str, request: Request):
+    cfg = get_config()
+    if host not in cfg.hosts:
+        raise HTTPException(404, detail=f"unknown host: {host}")
+    uri = cfg.hosts[host]
+    # owner session (for binding the token); anonymous if auth disabled
+    owner_sid = ""
+    session = getattr(request.state, "session", None)
+    if session is not None:
+        owner_sid = session.sid
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, create_vnc_session, host, vm, owner_sid, uri
+        )
+    except lv.VmNotFound:
+        raise HTTPException(404, detail=f"unknown vm: {vm}")
+    except lv.HostUnreachable as e:
+        raise HTTPException(502, detail=str(e))
+    except lv.LibvirtUnavailable as e:
+        raise HTTPException(503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(409, detail=str(e))
+    return result
+
+
 @router.post("/hosts/{host}/vms/{vm}/{action}")
 async def vm_action(host: str, vm: str, action: str):
     fn = lv.ACTIONS.get(action)
@@ -135,32 +161,6 @@ async def vm_stats(host: str, vm: str):
     except Exception as e:
         raise HTTPException(400, detail=str(e))
     return stats
-
-
-@router.post("/hosts/{host}/vms/{vm}/vnc")
-async def vm_vnc(host: str, vm: str, request: Request):
-    cfg = get_config()
-    if host not in cfg.hosts:
-        raise HTTPException(404, detail=f"unknown host: {host}")
-    uri = cfg.hosts[host]
-    # owner session (for binding the token); anonymous if auth disabled
-    owner_sid = ""
-    session = getattr(request.state, "session", None)
-    if session is not None:
-        owner_sid = session.sid
-    try:
-        result = await asyncio.get_event_loop().run_in_executor(
-            None, create_vnc_session, host, vm, owner_sid, uri
-        )
-    except lv.VmNotFound:
-        raise HTTPException(404, detail=f"unknown vm: {vm}")
-    except lv.HostUnreachable as e:
-        raise HTTPException(502, detail=str(e))
-    except lv.LibvirtUnavailable as e:
-        raise HTTPException(503, detail=str(e))
-    except Exception as e:
-        raise HTTPException(409, detail=str(e))
-    return result
 
 
 @router.post("/config/reload")

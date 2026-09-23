@@ -2,7 +2,7 @@ import { ChevronRight, Server } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { HostStatus } from "@/types";
-import { cn } from "@/lib/utils";
+import { cn, formatKiB } from "@/lib/utils";
 
 export function HostSidebar({
   hosts,
@@ -55,7 +55,7 @@ export function HostSidebar({
                 <div className="mt-1 text-[11px] text-muted-foreground truncate">{h.uri}</div>
                 {h.reachable ? (
                   <div className="mt-1 text-[11px] text-muted-foreground">
-                    {h.cpus} vCPU · {h.memory_kib ? Math.round(h.memory_kib / 1024 / 1024) : "?"} GiB ·{" "}
+                    {h.cpus} vCPU · {h.memory_kib ? formatKiB(h.memory_kib) : "?"} ·{" "}
                     {h.total_vms ?? 0} VMs
                   </div>
                 ) : (

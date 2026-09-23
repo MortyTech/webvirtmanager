@@ -109,6 +109,31 @@ def close_pool() -> None:
                 entry[0] = None
 
 
+def _host_memory_kib(conn) -> int:
+    """Total host memory in KiB.
+
+    Prefers virNodeGetMemoryStats('total') — reliable, matches /proc/meminfo,
+    always in KiB. Falls back to getInfo()'s memory field (KiB per libvirt docs,
+    but has been observed returning 0 / wrong-scale values on some builds).
+    """
+    for name in ("getMemoryStats", "nodeGetMemoryStats"):
+        fn = getattr(conn, name, None)
+        if callable(fn):
+            try:
+                stats = fn(-1, 0)
+                if isinstance(stats, dict) and stats.get("total"):
+                    return int(stats["total"])
+            except Exception:
+                continue
+    try:
+        info = conn.getInfo()
+        if info and len(info) > 1 and info[1]:
+            return int(info[1])
+    except Exception:
+        pass
+    return 0
+
+
 # ---- host & VM listing -----------------------------------------------------
 
 def host_status(host: str) -> Dict[str, Any]:
@@ -119,6 +144,7 @@ def host_status(host: str) -> Dict[str, Any]:
             info = conn.getInfo()  # (model, memoryKiB, cpus, mhz, nodes, sockets, cores, threads)
             total_vms = conn.numOfDomains()
             active = conn.numOfDomains()
+            memory_kib = _host_memory_kib(conn)
             reachable = True
         except Exception as e:
             raise HostUnreachable(str(e))
@@ -130,7 +156,7 @@ def host_status(host: str) -> Dict[str, Any]:
         "cpu_model": info[0],
         "cpus": info[2],
         "mhz": info[3],
-        "memory_kib": info[1],
+        "memory_kib": memory_kib,
         "nodes": info[4],
         "sockets": info[5],
         "cores_per_socket": info[6],
@@ -380,11 +406,16 @@ def vm_vnc_info(host: str, vm: str) -> Dict[str, Any]:
     root = ET.fromstring(xml)
     for g in root.iter("graphics"):
         if g.get("type") == "vnc":
+            # autoport VMs report port=-1 in the persistent config; only the
+            # *live* XML of a running domain carries the real port (5900+N).
+            port = int(g.get("port") or 0)
+            if port < 0:
+                port = 0
             return {
                 "host": host,
                 "vm": vm,
                 "type": "vnc",
-                "port": int(g.get("port") or 0),
+                "port": port,
                 "listen": g.get("listen") or g.get("socket") or "127.0.0.1",
                 "autoport": g.get("autoport") == "yes",
                 "state": _STATE_MAP.get(int(state), "unknown"),

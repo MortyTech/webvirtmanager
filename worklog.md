@@ -56,3 +56,25 @@ Work Log:
 Stage Summary:
 - Root cause: wrong libvirt-python method name (`autostartEnabled` vs `autostart`) inside a try/except that swallowed it, dropping all VMs.
 - Fix in backend/app/libvirt_api.py. User must rebuild the image: `docker compose build && docker compose up -d --force-recreate` (frontend layer is cached; only the backend app copy layer onward reruns — fast).
+
+---
+Task ID: bugfix-2
+Agent: main (Z.ai Code)
+Task: Fix the batch of bugs visible in the user's 3 screenshots (dashboard, stats drawer, VNC console).
+
+Work Log:
+- VNC "unknown action: vnc": root cause = FastAPI route ordering. POST /hosts/{host}/vms/{vm}/{action} was registered BEFORE POST .../vnc, so Starlette matched "vnc" as an {action} param first -> 404. Reordered routes.py so .../vnc is registered before .../{action}. Verified /vnc is now route index 5, /{action} index 6.
+- VM memory shown as TiB (48/16/8 TiB): formatKiB() threshold bug — 1024*1024 KiB is 1 GiB, not 1 TiB. Fixed thresholds: TiB=1024^3, GiB=1024^2, MiB=1024. Now 48 GiB -> "48 GiB".
+- Host memory "0 GiB": getInfo() memory field unreliable on these builds. Added _host_memory_kib(conn) that prefers virNodeGetMemoryStats('total') (KiB, matches /proc/meminfo) with getInfo fallback. HostSidebar now uses formatKiB() (consistent units).
+- Unrounded floats (947.2149857337799 B/s): formatBytes() <1024 branch returned raw float. Fixed to Math.round. Now 947 B/s.
+- Charts looked cumulative (linear ramp from 0): first sample had no previous point so it pushed a zero history point, then rose to the real rate. Fixed: on first sample, store baseline and DON'T push a point; chart starts at the first real rate.
+- Memory at 100%: dom.info() memory (balloon current) == max when not ballooned. Switched the "used" metric to memory_stats.rss (resident) when available, else actual-unused, else memory_kib. Shows realistic % of max.
+- Stats screen too small: rewrote VmStatsSheet from a narrow 512px side Sheet to a large centered Dialog (96vw / 90vh, max-w-5xl) with bigger stat cards and taller (160px) 2-col charts.
+- VM state badges not aligned: badges had varying widths, left-aligned -> ragged. Made them fixed-width (w-20) centered pills with whitespace-nowrap; widened state column to 100px; right-aligned vCPU/Memory; added min-w-0 to name for clean truncation.
+- vm_vnc_info: treat port<0 (autoport unassigned / domain not running) as 0 (no VNC) so create_vnc_session rejects cleanly.
+- Verified: backend imports clean, /vnc before /{action}, frontend `bun run build` passes (tsc + vite), formatter math proven (48 GiB, 256 GiB, 947 B/s).
+
+Stage Summary:
+- 6 distinct bugs fixed across backend (libvirt_api.py, routes.py, vnc_proxy via vm_vnc_info) and frontend (utils.ts, HostSidebar, VmTable, VmStatsSheet).
+- User must rebuild: `docker compose build && docker compose up -d --force-recreate` (frontend rebuilds; backend Python + frontend copied into image).
+- VNC should now open (route fixed; user's VNC XML listen=172.16.21.13 autoport=yes -> live XML gives real port, SSH tunnel to that addr:port).

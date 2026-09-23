@@ -76,11 +76,11 @@ export function VmTable({
           </div>
         ) : (
           <div className="divide-y">
-            <div className="grid grid-cols-[1fr_96px_64px_84px_auto] gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="grid grid-cols-[1fr_100px_56px_88px_auto] gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               <span>Name</span>
-              <span>State</span>
-              <span>vCPU</span>
-              <span>Memory</span>
+              <span className="text-center">State</span>
+              <span className="text-right">vCPU</span>
+              <span className="text-right">Memory</span>
               <span className="text-right">Actions</span>
             </div>
             {sorted.map((vm) => {
@@ -89,11 +89,11 @@ export function VmTable({
               return (
                 <div
                   key={vm.uuid || vm.name}
-                  className="grid grid-cols-[1fr_96px_64px_84px_auto] gap-2 px-4 py-2.5 items-center text-sm"
+                  className="grid grid-cols-[1fr_100px_56px_88px_auto] gap-2 px-4 py-2.5 items-center text-sm"
                 >
-                  <div className="font-medium truncate">{vm.name}</div>
-                  <div>
-                    <Badge variant="outline" className={cn("gap-1.5", STATE_STYLES[vm.state])}>
+                  <div className="font-medium truncate min-w-0">{vm.name}</div>
+                  <div className="flex justify-center">
+                    <Badge variant="outline" className={cn("w-20 justify-center whitespace-nowrap gap-1.5", STATE_STYLES[vm.state])}>
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",
@@ -105,8 +105,8 @@ export function VmTable({
                       {vm.state}
                     </Badge>
                   </div>
-                  <div className="tabular-nums">{vm.vcpu}</div>
-                  <div className="tabular-nums">{formatKiB(vm.max_memory_kib)}</div>
+                  <div className="tabular-nums text-right">{vm.vcpu}</div>
+                  <div className="tabular-nums text-right">{formatKiB(vm.max_memory_kib)}</div>
                   <div className="flex items-center justify-end gap-1">
                     {isRunning ? (
                       <>

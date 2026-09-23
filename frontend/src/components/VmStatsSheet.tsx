@@ -15,28 +15,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator, Progress, Spinner } from "@/components/ui/misc";
+import { Separator, Spinner } from "@/components/ui/misc";
 import { usePolling } from "@/hooks/usePolling";
 import { api } from "@/api";
 import type { VmInfo, VmStats } from "@/types";
-import { formatBytes, formatKiB } from "@/lib/utils";
-import {
-  Area,
-  AreaChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { formatBytes, formatBitsPerSec, formatIops, formatKiB } from "@/lib/utils";
 
+// Per-interval RATES (deltas of libvirt's cumulative counters over dt).
+interface DiskRate {
+  device: string;
+  rdIops: number;
+  wrIops: number;
+  rdBytes: number; // bytes/s
+  wrBytes: number; // bytes/s
+}
 interface Sample {
-  t: number;
   cpuPct: number;
-  memPct: number;
   netRx: number; // bytes/s
-  netTx: number;
-  diskRd: number; // bytes/s
-  diskWr: number;
+  netTx: number; // bytes/s
+  perDisk: DiskRate[];
+  agg: { rdIops: number; wrIops: number; rdBytes: number; wrBytes: number };
 }
 
 export function VmStatsSheet({
@@ -51,7 +49,7 @@ export function VmStatsSheet({
   onOpenChange: (v: boolean) => void;
 }) {
   const [intervalSec, setIntervalSec] = useState(30);
-  const [history, setHistory] = useState<Sample[]>([]);
+  const [latest, setLatest] = useState<Sample | null>(null);
   const prevRef = useRef<{ stats: VmStats; t: number } | null>(null);
 
   const fetcher = useMemo(
@@ -63,16 +61,14 @@ export function VmStatsSheet({
     enabled: open && !!vm,
   });
 
-  // Compute per-second RATES from deltas of cumulative libvirt counters.
-  // On the very first sample there's no previous point, so we DON'T push a
-  // (zero) history point — that's what made the charts look like a linear
-  // ramp from 0. The chart starts at the first real rate instead.
+  // Compute per-interval rates as deltas of cumulative counters (T1 -> T2).
+  // On the first sample we just store the baseline; rates appear from the 2nd.
   useEffect(() => {
     if (!data) return;
     const now = Date.now();
     const prev = prevRef.current;
     prevRef.current = { stats: data, t: now };
-    if (!prev) return; // first sample: store baseline, no history point yet
+    if (!prev) return;
 
     const dt = (now - prev.t) / 1000;
     if (dt <= 0) return;
@@ -87,31 +83,38 @@ export function VmStatsSheet({
     const netRx = Math.max(0, (curRx - prevRx) / dt);
     const netTx = Math.max(0, (curTx - prevTx) / dt);
 
-    const prevRd = prev.stats.disks.reduce((a, d) => a + (d.rd_bytes || 0), 0);
-    const prevWr = prev.stats.disks.reduce((a, d) => a + (d.wr_bytes || 0), 0);
-    const curRd = data.disks.reduce((a, d) => a + (d.rd_bytes || 0), 0);
-    const curWr = data.disks.reduce((a, d) => a + (d.wr_bytes || 0), 0);
-    const diskRd = Math.max(0, (curRd - prevRd) / dt);
-    const diskWr = Math.max(0, (curWr - prevWr) / dt);
+    // Per-disk rates, matched by device name; aggregated totals sum them.
+    const prevDiskMap = new Map(prev.stats.disks.map((d) => [d.device, d]));
+    const perDisk: DiskRate[] = [];
+    const agg = { rdIops: 0, wrIops: 0, rdBytes: 0, wrBytes: 0 };
+    for (const d of data.disks) {
+      const p = prevDiskMap.get(d.device);
+      if (!p) continue;
+      const rate: DiskRate = {
+        device: d.device,
+        rdIops: Math.max(0, ((d.rd_req || 0) - (p.rd_req || 0)) / dt),
+        wrIops: Math.max(0, ((d.wr_req || 0) - (p.wr_req || 0)) / dt),
+        rdBytes: Math.max(0, ((d.rd_bytes || 0) - (p.rd_bytes || 0)) / dt),
+        wrBytes: Math.max(0, ((d.wr_bytes || 0) - (p.wr_bytes || 0)) / dt),
+      };
+      perDisk.push(rate);
+      agg.rdIops += rate.rdIops;
+      agg.wrIops += rate.wrIops;
+      agg.rdBytes += rate.rdBytes;
+      agg.wrBytes += rate.wrBytes;
+    }
 
-    // Memory "used": prefer RSS (resident set) from memoryStats; fall back to
-    // balloon actual-minus-unused, then to dom.info()'s current memory.
-    const ms = data.memory_stats || {};
-    let usedKib = data.memory_kib;
-    if (ms.rss) usedKib = ms.rss;
-    else if (ms.actual != null && ms.unused != null) usedKib = Math.max(0, ms.actual - ms.unused);
-    const memPct = data.max_memory_kib ? (usedKib / data.max_memory_kib) * 100 : 0;
-
-    setHistory((h) => [...h.slice(-39), { t: now, cpuPct, memPct, netRx, netTx, diskRd, diskWr }]);
+    setLatest({ cpuPct, netRx, netTx, perDisk, agg });
   }, [data]);
 
-  // Reset history when switching VM
+  // Reset when switching VM
   useEffect(() => {
     prevRef.current = null;
-    setHistory([]);
+    setLatest(null);
   }, [vm?.name]);
 
-  const latest = history[history.length - 1];
+  // Memory "used": prefer RSS (resident), fall back to balloon actual-unused,
+  // then dom.info()'s current memory.
   const ms = data?.memory_stats || {};
   let usedKib = data?.memory_kib ?? 0;
   if (ms.rss) usedKib = ms.rss;
@@ -120,7 +123,7 @@ export function VmStatsSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl w-[96vw] h-[90vh] p-0 overflow-hidden gap-0 flex flex-col">
+      <DialogContent className="sm:max-w-5xl w-[96vw] h-auto max-h-[90vh] p-0 overflow-hidden gap-0 flex flex-col">
         <DialogHeader className="px-5 py-3 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Activity className="h-5 w-5 text-emerald-600" />
@@ -146,7 +149,9 @@ export function VmStatsSheet({
               ))}
             </SelectContent>
           </Select>
-          <span className="text-[11px] text-muted-foreground">minimum 10s · default 30s</span>
+          <span className="text-[11px] text-muted-foreground">
+            minimum 10s · default 30s · rates are per-interval deltas
+          </span>
           <button onClick={refresh} className="ml-auto text-xs text-emerald-600 hover:underline">
             Refresh now
           </button>
@@ -162,6 +167,7 @@ export function VmStatsSheet({
             </div>
           ) : (
             <div className="grid gap-4">
+              {/* CPU + Memory */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <Stat
                   icon={Cpu}
@@ -177,62 +183,100 @@ export function VmStatsSheet({
                   sub={`${memPct.toFixed(1)}% of max`}
                   color="text-violet-600"
                 />
+                {/* Network RX & TX — equal-weight cards, in BITS/s */}
                 <Stat
                   icon={Network}
                   label="Network RX"
-                  value={latest ? `${formatBytes(latest.netRx)}/s` : "—"}
-                  sub={`TX ${latest ? formatBytes(latest.netTx) + "/s" : "—"}`}
+                  value={latest ? formatBitsPerSec(latest.netRx) : "—"}
+                  sub="receive"
                   color="text-sky-600"
                 />
                 <Stat
-                  icon={HardDrive}
-                  label="Disk read"
-                  value={latest ? `${formatBytes(latest.diskRd)}/s` : "—"}
-                  sub={`write ${latest ? formatBytes(latest.diskWr) + "/s" : "—"}`}
-                  color="text-orange-600"
+                  icon={Network}
+                  label="Network TX"
+                  value={latest ? formatBitsPerSec(latest.netTx) : "—"}
+                  sub="transmit"
+                  color="text-sky-600"
                 />
+              </div>
+
+              {/* Disk I/O — 4 metrics (IOPS read/write, throughput read/write) */}
+              <div>
+                <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                  Disk I/O{latest && latest.perDisk.length > 1 ? ` · aggregated (${latest.perDisk.length} disks)` : ""}
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <Stat
+                    icon={HardDrive}
+                    label="Read IOPS"
+                    value={latest ? formatIops(latest.agg.rdIops) : "—"}
+                    sub="requests/s"
+                    color="text-orange-600"
+                  />
+                  <Stat
+                    icon={HardDrive}
+                    label="Write IOPS"
+                    value={latest ? formatIops(latest.agg.wrIops) : "—"}
+                    sub="requests/s"
+                    color="text-orange-600"
+                  />
+                  <Stat
+                    icon={HardDrive}
+                    label="Read throughput"
+                    value={latest ? `${formatBytes(latest.agg.rdBytes)}/s` : "—"}
+                    sub="bytes/s"
+                    color="text-orange-600"
+                  />
+                  <Stat
+                    icon={HardDrive}
+                    label="Write throughput"
+                    value={latest ? `${formatBytes(latest.agg.wrBytes)}/s` : "—"}
+                    sub="bytes/s"
+                    color="text-orange-600"
+                  />
+                </div>
+
+                {/* Per-disk breakdown (only when >1 disk) */}
+                {latest && latest.perDisk.length > 1 && (
+                  <details className="mt-3 group">
+                    <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground list-none flex items-center gap-1">
+                      <span className="group-open:rotate-90 transition-transform">▸</span>
+                          Per-disk breakdown
+                    </summary>
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-border text-muted-foreground">
+                            <th className="text-left font-medium px-2 py-1.5">Device</th>
+                            <th className="text-right font-medium px-2 py-1.5">Read IOPS</th>
+                            <th className="text-right font-medium px-2 py-1.5">Write IOPS</th>
+                            <th className="text-right font-medium px-2 py-1.5">Read</th>
+                            <th className="text-right font-medium px-2 py-1.5">Write</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {latest.perDisk.map((d) => (
+                            <tr key={d.device} className="border-b border-border last:border-0">
+                              <td className="px-2 py-1.5 font-mono">{d.device}</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums">{formatIops(d.rdIops)}</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums">{formatIops(d.wrIops)}</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums">{formatBytes(d.rdBytes)}/s</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums">{formatBytes(d.wrBytes)}/s</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
               </div>
 
               <Separator />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <ChartBlock
-                  title="CPU usage history"
-                  value={latest ? `${latest.cpuPct.toFixed(1)}%` : "—"}
-                  data={history}
-                  dataKey="cpuPct"
-                  color="#10b981"
-                  fmt={(v) => `${Number(v).toFixed(1)}%`}
-                  height={160}
-                />
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Memory (used / max)</span>
-                    <span className="text-[11px] text-muted-foreground tabular-nums">{memPct.toFixed(1)}%</span>
-                  </div>
-                  <Progress value={memPct} className="h-3" />
-                  <div className="text-[11px] text-muted-foreground">
-                    {formatKiB(usedKib)} used of {formatKiB(data.max_memory_kib)} allocated
-                  </div>
-                </div>
-                <ChartBlock
-                  title="Network RX history"
-                  value={latest ? `${formatBytes(latest.netRx)}/s` : "—"}
-                  data={history}
-                  dataKey="netRx"
-                  color="#0284c7"
-                  fmt={(v) => `${formatBytes(Number(v))}/s`}
-                  height={160}
-                />
-                <ChartBlock
-                  title="Disk write history"
-                  value={latest ? `${formatBytes(latest.diskWr)}/s` : "—"}
-                  data={history}
-                  dataKey="diskWr"
-                  color="#ea580c"
-                  fmt={(v) => `${formatBytes(Number(v))}/s`}
-                  height={160}
-                />
+              <div className="text-[11px] text-muted-foreground">
+                Rates computed as <code className="font-mono">(counter_T2 − counter_T1) / interval</code> from libvirt
+                cumulative counters (dom.info / memoryStats / blockStats / interfaceStats).
+                {!latest && " First sample establishes the baseline — values appear after the next poll."}
               </div>
             </div>
           )}
@@ -266,59 +310,5 @@ function Stat({
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>
-  );
-}
-
-function ChartBlock({
-  title,
-  value,
-  data,
-  dataKey,
-  color,
-  fmt,
-  height,
-}: {
-  title: string;
-  value: string;
-  data: Sample[];
-  dataKey: keyof Sample;
-  color: string;
-  fmt: (v: number) => string;
-  height: number;
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium text-muted-foreground">{title}</span>
-        <span className="text-[11px] text-muted-foreground tabular-nums">{value}</span>
-      </div>
-      <div style={{ height }} className="w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id={`g-${String(dataKey)}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity={0.5} />
-                <stop offset="100%" stopColor={color} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <Area
-              type="monotone"
-              dataKey={dataKey}
-              stroke={color}
-              strokeWidth={1.5}
-              fill={`url(#g-${String(dataKey)})`}
-              isAnimationActive={false}
-            />
-            <XAxis dataKey="t" hide />
-            <YAxis hide domain={["dataMin", "dataMax"]} />
-            <Tooltip
-              contentStyle={{ fontSize: 11, borderRadius: 8, padding: "4px 8px" }}
-              labelFormatter={() => ""}
-              formatter={(v: number) => [fmt(v), ""]}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
   );
 }

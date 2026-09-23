@@ -24,3 +24,22 @@ export function formatBytes(b: number): string {
   if (b >= 1024) return `${Math.round(b / 1024)} KiB`;
   return `${Math.round(b)} B`;
 }
+
+// Network throughput is traditionally measured in BITS per second (SI units:
+// 1000-based), not bytes. Convert bytes/s -> bits/s (x8) and format.
+export function formatBitsPerSec(bytesPerSec: number): string {
+  if (bytesPerSec == null || (typeof bytesPerSec === "number" && isNaN(bytesPerSec)))
+    return "—";
+  const bps = bytesPerSec * 8;
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(2)} Gbps`;
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(2)} Mbps`;
+  if (bps >= 1e3) return `${(bps / 1e3).toFixed(1)} Kbps`;
+  return `${Math.round(bps)} bps`;
+}
+
+// IOPS (operations per second) — compact with k suffix.
+export function formatIops(iops: number): string {
+  if (iops == null || (typeof iops === "number" && isNaN(iops))) return "—";
+  if (iops >= 1000) return `${(iops / 1000).toFixed(1)}k IOPS`;
+  return `${Math.round(iops)} IOPS`;
+}

@@ -1,0 +1,37 @@
+# VCS / editor
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Node / build artefacts (built inside the image)
+frontend/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+backend/static
+backend/__pycache__
+backend/**/__pycache__
+backend/app/__pycache__
+
+# Sandbox-only files (not part of the deployable app)
+src
+tests
+examples
+db
+prisma
+download
+mini-services
+Caddyfile
+components.json
+eslint.config.mjs
+next.config.ts
+postcss.config.mjs
+tailwind.config.ts
+tsconfig.json
+bun.lock
+package.json
+dev.log
+server.log
+worklog.md
+README.md

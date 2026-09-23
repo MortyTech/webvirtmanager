@@ -1,0 +1,8 @@
+fastapi==0.128.0
+uvicorn[standard]==0.44.0
+httpx==0.28.1
+PyJWT==2.12.1
+websockets==16.0
+# libvirt-python binds against the system libvirt libraries (provided by the
+# Docker image via libvirt-dev / libvirt-clients). Installed in the container.
+libvirt-python==10.10.0 ; platform_system == "Linux"

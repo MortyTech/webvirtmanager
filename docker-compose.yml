@@ -1,0 +1,24 @@
+# docker compose for Webvirt.
+#
+# Usage:
+#   1. Copy backend/config.ini.example to ./config.ini and edit it (OIDC + hosts).
+#   2. Put your SSH key for the hypervisors at ~/.ssh/id_ed25519 (or adjust below).
+#   3. docker compose up -d
+#
+# To disable authentication entirely (trusted internal networks only):
+#   set OIDC_ENABLED=false below (or enabled = false in config.ini).
+
+services:
+  webvirt:
+    build: .
+    image: webvirt:latest
+    container_name: webvirt
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OIDC_ENABLED=${OIDC_ENABLED:-true}
+      - SESSION_SECRET=${SESSION_SECRET:-}
+    volumes:
+      - ./config.ini:/app/config.ini:ro
+      - ${SSH_DIR:-~/.ssh}:/root/.ssh:ro

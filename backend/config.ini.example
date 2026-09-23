@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Webvirt configuration
+#
+# All configuration — OIDC settings and the list of hosts — lives in this one
+# INI file. The backend reads it on startup and reloads it on SIGHUP or via
+# POST /api/config/reload (no full restart needed).
+#
+# Adding or removing a host = editing the [hosts] block. There is no admin UI.
+# ---------------------------------------------------------------------------
+
+[oidc]
+# Master toggle. Default is "true" (secure-by-default).
+# Set to "false" ONLY on trusted internal networks where no login is desired.
+# When false, the entire OIDC flow is skipped, no callback route is registered,
+# and the dashboard is served unauthenticated. No logout button is shown.
+enabled = true
+
+issuer = https://keycloak.tunoo.de/realms/tunoo
+client_id = my-client-id
+
+# Omit this line entirely for public (PKCE) clients. For confidential clients
+# this secret is used in the token exchange server-side only — never exposed
+# to the frontend.
+client_secret = my-client-secret
+
+# "confidential" = Authorization Code + client_secret
+# "public"        = Authorization Code + PKCE (S256), no secret anywhere
+client_type = confidential
+
+# Used verbatim as the redirect_uri in the auth request and as the path of the
+# callback route. Never derived from the Host header — must match what the IdP
+# has registered, byte-for-byte.
+redirect_url = https://adc.tunoo.de/oauth2/callback
+
+# Fallback end-session endpoint used only if the discovery document does not
+# expose an end_session_endpoint. RP-initiated logout passes id_token_hint and
+# post_logout_redirect_uri (derived from redirect_url's origin).
+backend_logout_url = https://keycloak.tunoo.de/realms/tunoo/protocol/openid-connect/logout
+
+# Scope sent in the authorization request. Read from config, never hardcoded.
+scope = "openid profile email"
+
+# Claim name (in the ID token or userinfo response) that carries the user's
+# groups. Stored in the session and exposed at GET /api/me.
+oidc_groups_claim = groups
+
+# ---------------------------------------------------------------------------
+# Trusted-network mode (optional)
+#
+# To disable authentication entirely, set the toggle above to "false" OR run
+# the container with `OIDC_ENABLED=false`. This disables ALL access control —
+# only use on trusted internal networks.
+# ---------------------------------------------------------------------------
+
+[hosts]
+node01 = qemu+ssh://root@node01/system
+node02 = qemu+ssh://root@node02/system
+node03 = qemu+ssh://root@node03/system

@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import {
   Activity,
   ChevronUp,
+  FileCode,
   MonitorPlay,
   Play,
   Power,
   RefreshCw,
   RotateCcw,
+  Square,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +47,7 @@ export function VmTable({
   onAction,
   onStats,
   onConsole,
+  onEditXml,
   busyKey,
 }: {
   host: HostStatus | null;
@@ -53,6 +56,7 @@ export function VmTable({
   onAction: (vm: VmInfo, action: string) => void;
   onStats: (vm: VmInfo) => void;
   onConsole: (vm: VmInfo) => void;
+  onEditXml: (vm: VmInfo) => void;
   busyKey: string | null;
 }) {
   const reachable = host?.reachable;
@@ -190,8 +194,8 @@ export function VmTable({
                               <Button size="xs" variant="ghost" onClick={() => onAction(vm, "soft-reboot")} title="Soft reboot (ACPI)">
                                 <RefreshCw className="h-3.5 w-3.5" />
                               </Button>
-                              <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Hard power off">
-                                <Power className="h-3.5 w-3.5" />
+                              <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Stop (force power off)">
+                                <Square className="h-3.5 w-3.5 fill-current" />
                               </Button>
                               <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "hard-reset")} title="Hard reset">
                                 <RotateCcw className="h-3.5 w-3.5" />
@@ -202,6 +206,9 @@ export function VmTable({
                               <Button size="xs" variant="outline" onClick={() => onConsole(vm)} title="VNC console">
                                 <MonitorPlay className="h-3.5 w-3.5" />
                               </Button>
+                              <Button size="xs" variant="outline" onClick={() => onEditXml(vm)} title="Edit XML (virsh edit)">
+                                <FileCode className="h-3.5 w-3.5" />
+                              </Button>
                             </>
                           ) : (
                             <>
@@ -209,8 +216,8 @@ export function VmTable({
                                 <Play className="h-3.5 w-3.5" />
                               </Button>
                               {vm.state === "paused" && (
-                                <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Hard power off">
-                                  <Power className="h-3.5 w-3.5" />
+                                <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Stop (force power off)">
+                                  <Square className="h-3.5 w-3.5 fill-current" />
                                 </Button>
                               )}
                               <Button size="xs" variant="outline" onClick={() => onStats(vm)} title="Stats">
@@ -218,6 +225,9 @@ export function VmTable({
                               </Button>
                               <Button size="xs" variant="outline" disabled title="VM not running">
                                 <MonitorPlay className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="outline" onClick={() => onEditXml(vm)} title="Edit XML (virsh edit)">
+                                <FileCode className="h-3.5 w-3.5" />
                               </Button>
                             </>
                           )}

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from . import libvirt_api as lv
@@ -161,6 +161,49 @@ async def vm_stats(host: str, vm: str):
     except Exception as e:
         raise HTTPException(400, detail=str(e))
     return stats
+
+
+@router.get("/hosts/{host}/vms/{vm}/xml")
+async def vm_get_xml(host: str, vm: str):
+    """Return the domain XML for the editor (virsh edit equivalent)."""
+    try:
+        xml = await asyncio.get_event_loop().run_in_executor(None, lv.vm_xml, host, vm)
+    except lv.HostNotFound:
+        raise HTTPException(404, detail=f"unknown host: {host}")
+    except lv.VmNotFound:
+        raise HTTPException(404, detail=f"unknown vm: {vm}")
+    except lv.LibvirtUnavailable as e:
+        raise HTTPException(503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {"host": host, "vm": vm, "xml": xml}
+
+
+@router.put("/hosts/{host}/vms/{vm}/xml")
+async def vm_save_xml(host: str, vm: str, payload: dict = Body(...)):
+    """Apply edited domain XML via virDomainDefineXML.
+
+    Like `virsh edit`: malformed XML or a libvirt rejection returns 400 with the
+    error detail so the editor stays open with the user's text intact.
+    """
+    xml = (payload or {}).get("xml", "")
+    if not xml.strip():
+        raise HTTPException(400, detail="empty xml")
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, lv.vm_define_xml, host, vm, xml
+        )
+    except lv.HostNotFound:
+        raise HTTPException(404, detail=f"unknown host: {host}")
+    except lv.VmNotFound:
+        raise HTTPException(404, detail=f"unknown vm: {vm}")
+    except lv.LibvirtUnavailable as e:
+        raise HTTPException(503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))  # XML parse error
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))  # libvirt rejection
+    return result
 
 
 @router.post("/config/reload")

@@ -421,3 +421,58 @@ def vm_vnc_info(host: str, vm: str) -> Dict[str, Any]:
                 "state": _STATE_MAP.get(int(state), "unknown"),
             }
     return {"host": host, "vm": vm, "type": "vnc", "port": 0, "listen": "", "state": _STATE_MAP.get(int(state), "unknown")}
+
+
+# ---- XML editor (virsh edit equivalent) ------------------------------------
+
+def vm_xml(host: str, vm: str) -> str:
+    """Return the domain XML for editing (virsh edit equivalent).
+
+    Prefers the persistent (inactive) definition — what `virsh edit` shows and
+    what `virDomainDefineXML` updates. For a transient domain (no persistent
+    config) it falls back to the current/live XML.
+    """
+    dom, lock = _lookup_vm(host, vm)
+    with lock:
+        flags = 0
+        if HAS_LIBVIRT:
+            flags = (
+                getattr(libvirt, "VIR_DOMAIN_XML_INACTIVE", 0)
+                | getattr(libvirt, "VIR_DOMAIN_XML_SECURE", 0)
+            )
+        try:
+            return dom.XMLDesc(flags)
+        except Exception:
+            # transient domain — return the live XML instead
+            try:
+                secure = getattr(libvirt, "VIR_DOMAIN_XML_SECURE", 0) if HAS_LIBVIRT else 0
+                return dom.XMLDesc(secure)
+            except Exception as e:
+                raise RuntimeError(str(e)) from e
+
+
+def vm_define_xml(host: str, vm: str, xml: str) -> Dict[str, Any]:
+    """Validate + apply edited domain XML (virDomainDefineXML).
+
+    Mirrors `virsh edit`: malformed XML or a libvirt rejection raises, so the
+    editor keeps the user's text and surfaces the error. A successful define
+    updates the persistent config (live state changes on next boot, like virsh).
+    """
+    # server-side well-formedness check before handing to libvirt
+    try:
+        ET.fromstring(xml)
+    except ET.ParseError as e:
+        raise ValueError(f"XML parse error: {e}")
+    conn, lock = _get_conn(host)
+    with lock:
+        try:
+            newdom = conn.defineXML(xml)
+        except Exception as e:
+            raise RuntimeError(str(e)) from e
+    name = ""
+    try:
+        name = newdom.name()
+    except Exception:
+        pass
+    return {"ok": True, "name": name or vm}
+

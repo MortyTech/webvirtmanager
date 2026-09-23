@@ -4,6 +4,7 @@ import { HostSidebar } from "@/components/HostSidebar";
 import { VmTable } from "@/components/VmTable";
 import { VmStatsSheet } from "@/components/VmStatsSheet";
 import { VncConsole } from "@/components/VncConsole";
+import { XmlEditor } from "@/components/XmlEditor";
 import { UserMenu } from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,8 @@ export default function App() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [vncVm, setVncVm] = useState<VmInfo | null>(null);
   const [vncOpen, setVncOpen] = useState(false);
+  const [xmlVm, setXmlVm] = useState<VmInfo | null>(null);
+  const [xmlOpen, setXmlOpen] = useState(false);
 
   // ---- bootstrap: /api/me --------------------------------------------------
   useEffect(() => {
@@ -186,6 +189,10 @@ export default function App() {
               setVncVm(vm);
               setVncOpen(true);
             }}
+            onEditXml={(vm) => {
+              setXmlVm(vm);
+              setXmlOpen(true);
+            }}
             busyKey={busyKey}
           />
         </div>
@@ -203,6 +210,7 @@ export default function App() {
 
       <VmStatsSheet host={selectedHost} vm={statsVm} open={statsOpen} onOpenChange={setStatsOpen} />
       <VncConsole host={selectedHost} vm={vncVm} open={vncOpen} onOpenChange={setVncOpen} />
+      <XmlEditor host={selectedHost} vm={xmlVm} open={xmlOpen} onOpenChange={setXmlOpen} />
       <Toaster />
     </div>
   );

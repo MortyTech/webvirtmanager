@@ -55,6 +55,15 @@ export const api = {
       `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/vnc`,
       { method: "POST" }
     ),
+  getXml: (host: string, vm: string) =>
+    req<{ host: string; vm: string; xml: string }>(
+      `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/xml`
+    ),
+  saveXml: (host: string, vm: string, xml: string) =>
+    req<{ ok: boolean; name?: string }>(
+      `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/xml`,
+      { method: "PUT", body: JSON.stringify({ xml }) }
+    ),
 };
 
 export function redirectToLogin() {

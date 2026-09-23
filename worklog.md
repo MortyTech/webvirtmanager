@@ -150,3 +150,25 @@ Work Log:
 
 Stage Summary:
 - VNC console now has 3 toolbar buttons: Ctrl+Alt+Del | Fit | Maximize | Fullscreen. Maximize fills the browser viewport (fixed inset-0) WITHOUT browser fullscreen (chrome stays visible); click again to restore centered modal. Fit keeps working inside maximized view. Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-7
+Agent: main (Z.ai Code)
+Task: Rename Hard Power Off -> Stop; add "Edit XML" (virsh edit equivalent) feature.
+
+Work Log:
+- VmTable: renamed the hard-power-off button to "Stop" — icon changed from Power to Square (fill-current, stop symbol), tooltip "Stop (force power off)". Applied to both the running-VM and paused-VM hard-off buttons. The backend action stays "power-off" (virDomainDestroy); only the UI changed.
+- Backend XML editor (virsh edit equivalent):
+  * libvirt_api.py: vm_xml(host, vm) returns the domain XML for editing (prefers VIR_DOMAIN_XML_INACTIVE|SECURE = the persistent definition that virsh edit shows and virDomainDefineXML updates; falls back to live XML for transient domains). vm_define_xml(host, vm, xml) does a server-side ET.fromstring well-formedness check, then conn.defineXML(xml) (virDomainDefineXML). Malformed XML raises ValueError; libvirt rejection raises RuntimeError — both surfaced as 400 so the editor stays open with the user's text.
+  * routes.py: GET /api/hosts/{host}/vms/{vm}/xml and PUT /api/hosts/{host}/vms/{vm}/xml (Body={xml}). PUT returns 400 with the parse/libvirt error detail on failure, {ok, name} on success.
+- Frontend XML editor:
+  * api.ts: getXml() + saveXml().
+  * XmlEditor.tsx: large dialog (96vw/88vh) with @uiw/react-codemirror + @codemirror/lang-xml (line numbers, XML syntax highlighting, fold gutter, dark theme). Loads XML on open. Save flow: client-side DOMParser well-formedness check first (never sends broken XML); then PUT; on 400 shows the libvirt error in a red banner and KEEPS the editor open with the user's changes intact; on success toasts + closes. "unsaved" indicator in header. Disabled Save button until dirty.
+  * VmTable: added an "Edit XML" outline button (FileCode icon, tooltip "Edit XML (virsh edit)") in both running and stopped action rows.
+  * App.tsx: wired xmlVm/xmlOpen state + onEditXml handler + rendered <XmlEditor>.
+- Installed deps: @uiw/react-codemirror, @codemirror/lang-xml (bun.lock updated).
+- Verified: backend imports OK, frontend `bun run build` passes, Next.js `bun run lint` clean.
+
+Stage Summary:
+- Stop button replaces Hard Power Off (Square icon, "Stop (force power off)" tooltip).
+- New "Edit XML" button opens a CodeMirror editor (XML highlight + line numbers) backed by virDomainGetXMLDesc(INACTIVE|SECURE) / virDomainDefineXML — behaves like virsh edit: invalid or libvirt-rejected XML is NOT saved, the editor stays open with the error and the user's text. Rebuild: `docker compose build && docker compose up -d --force-recreate`.

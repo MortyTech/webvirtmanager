@@ -16,13 +16,16 @@ RUN bun run build
 FROM python:3.12-slim AS backend-build
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libvirt-dev build-essential gcc \
+        libvirt-dev build-essential gcc pkg-config \
     && rm -rf /var/lib/apt/lists/*
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /tmp/requirements.txt
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && LIBVIRT_VER="$(pkg-config --modversion libvirt)" \
+    && echo ">>> installing libvirt-python matching libvirt ${LIBVIRT_VER}" \
+    && pip install --no-cache-dir "libvirt-python==${LIBVIRT_VER}"
 
 # ===========================================================================
 # Stage 3 — runtime image (lean: only libvirt runtime libs + openssh)

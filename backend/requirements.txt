@@ -3,6 +3,8 @@ uvicorn[standard]==0.44.0
 httpx==0.28.1
 PyJWT==2.12.1
 websockets==16.0
-# libvirt-python binds against the system libvirt libraries (provided by the
-# Docker image via libvirt-dev / libvirt-clients). Installed in the container.
-libvirt-python==10.10.0 ; platform_system == "Linux"
+# NOTE: libvirt-python is intentionally NOT listed here. It is installed in the
+# Dockerfile, version-matched to the distro's libvirt-dev via `pkg-config
+# --modversion libvirt`. The Python bindings are generated against a specific
+# libvirt API version, so a hardcoded pin (e.g. 10.10.0) fails to compile when
+# the distro ships an older libvirt (Debian bookworm = 9.x).

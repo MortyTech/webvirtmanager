@@ -134,3 +134,19 @@ Fix:
 
 Stage Summary:
 - VM table columns now align vertically across all rows (single shared column structure via <table>), header included. Sortable Name/State retained. Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-6
+Agent: main (Z.ai Code)
+Task: Add "Maximize"/"Fill Window" mode to the VNC console (expand modal to full viewport, keep browser chrome visible).
+
+Work Log:
+- Added isMaximized state to VncConsole (separate from isFullscreen / fit).
+- toggleMaximize(): flips the state, then after a 60ms layout delay re-assigns rfb.scaleViewport=fit (noVNC's setter calls _updateScale) and dispatches a window resize event — so the noVNC canvas rescales to the new container size when switching between centered and full-viewport.
+- contentClass: when maximized, DialogContent gets `fixed inset-0 left-0 top-0 right-0 bottom-0 z-50 w-screen h-screen max-w-none translate-x-0 translate-y-0 p-0 rounded-none sm:rounded-none overflow-hidden gap-0 flex flex-col` — twMerge overrides the dialog base's centering (left-1/2/top-1/2/-translate-x-.../max-w-lg/p-6/gap-4/grid/sm:rounded-lg). When not maximized, the original centered modal classes are unchanged (sm:max-w-6xl w-[96vw] h-[88vh]).
+- New "Maximize" button placed BETWEEN Fit and Fullscreen in the toolbar (Maximize2/Minimize2 icons; label toggles Maximize/Restore; ml-auto pushes it + Fullscreen to the right cluster).
+- Preserved exactly: Fullscreen (native Fullscreen API, Esc/F11 exit), Fit (1:1 vs scaled, scaleViewport), Ctrl+Alt+Del (sendCtrlAltDel), "Esc to exit fullscreen" hint, centered modal when not maximized, dialog X close.
+- Verified: frontend `bun run build` passes.
+
+Stage Summary:
+- VNC console now has 3 toolbar buttons: Ctrl+Alt+Del | Fit | Maximize | Fullscreen. Maximize fills the browser viewport (fixed inset-0) WITHOUT browser fullscreen (chrome stays visible); click again to restore centered modal. Fit keeps working inside maximized view. Rebuild: `docker compose build && docker compose up -d --force-recreate`.

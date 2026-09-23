@@ -4,6 +4,8 @@ import {
   Keyboard,
   Loader2,
   Lock,
+  Maximize2,
+  Minimize2,
   MonitorPlay,
   Shrink,
   Scaling,
@@ -42,6 +44,7 @@ export function VncConsole({
   const [password, setPassword] = useState("");
   const [fit, setFit] = useState(true); // scaleViewport on (fill container)
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false); // fills browser viewport (not true fullscreen)
 
   // Track native fullscreen changes (Esc/F11 exit handled by the browser).
   useEffect(() => {
@@ -137,11 +140,30 @@ export function VncConsole({
     }
   }
 
+  function toggleMaximize() {
+    setIsMaximized((m) => !m);
+    // Let the new layout (full-viewport vs centered) apply, then nudge noVNC
+    // to rescale to the resized container. Re-assigning scaleViewport triggers
+    // noVNC's internal _updateScale(); a window resize event is a backup.
+    setTimeout(() => {
+      const rfb = rfbRef.current;
+      if (rfb) rfb.scaleViewport = fit;
+      window.dispatchEvent(new Event("resize"));
+    }, 60);
+  }
+
+  // Class for the dialog surface: centered modal (default) vs full-viewport.
+  // "Maximize" expands within the page (browser chrome stays visible), unlike
+  // the native Fullscreen button.
+  const contentClass = isMaximized
+    ? "fixed inset-0 left-0 top-0 right-0 bottom-0 z-50 w-screen h-screen max-w-none translate-x-0 translate-y-0 p-0 rounded-none sm:rounded-none overflow-hidden gap-0 flex flex-col"
+    : "sm:max-w-6xl w-[96vw] h-[88vh] p-0 overflow-hidden gap-0 flex flex-col";
+
   const connected = phase === "connected";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl w-[96vw] h-[88vh] p-0 overflow-hidden gap-0 flex flex-col">
+      <DialogContent className={contentClass}>
         <DialogHeader className="px-4 py-2.5 border-b bg-zinc-900 shrink-0">
           <DialogTitle className="text-zinc-100 flex items-center gap-2 text-sm">
             <MonitorPlay className="h-4 w-4 text-emerald-400" />
@@ -178,10 +200,21 @@ export function VncConsole({
           <Button
             size="xs"
             variant="ghost"
+            onClick={toggleMaximize}
+            disabled={!connected}
+            title={isMaximized ? "Restore to centered window" : "Fill browser window"}
+            className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 ml-auto"
+          >
+            {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            {isMaximized ? "Restore" : "Maximize"}
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
             onClick={toggleFullscreen}
             disabled={!connected}
             title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen (Esc/F11 to exit)"}
-            className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 ml-auto"
+            className="text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800"
           >
             {isFullscreen ? <Shrink className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
             {isFullscreen ? "Exit" : "Fullscreen"}

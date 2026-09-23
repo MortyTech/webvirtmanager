@@ -37,3 +37,22 @@ Stage Summary:
 - Next.js showcase (the only user-visible / route) verified end-to-end with Agent Browser: renders, tabs work (Dashboard/Configuration/Architecture/Deploy), host switching, VNC console dialog with boot log, stats sheet with live values + 30s default interval, sticky footer on short + long pages, mobile responsive.
 - No runtime/hydration errors; dev.log clean; bun run lint clean.
 - Real deliverable = Dockerized app in backend/ + frontend/ + Dockerfile + docker-compose.yml + README. libvirt is a Docker-runtime dependency (not present in sandbox); OIDC + config + SPA serving + VNC proxy logic all verified.
+
+---
+Task ID: bugfix-1
+Agent: main (Z.ai Code)
+Task: Fix "host connected but no VMs shown" — virsh lists 3 domains but the app shows none.
+
+Work Log:
+- Diagnosed: in backend/app/libvirt_api.py list_vms(), the per-domain dict literal called `dom.autostartEnabled()` — which is NOT a real libvirt-python method (`virDomainGetAutostart` is exposed as `dom.autostart()`). The AttributeError fired inside the dict literal before `out.append(...)` completed, was swallowed by `except Exception: continue`, and silently dropped EVERY domain → empty list → "No domains defined" despite a reachable host.
+- Fixed list_vms():
+  * Added a `_call(obj, primary, *fallbacks, default=...)` helper that tries the real method name plus fallbacks and never raises.
+  * Essential fields (name/uuid/state/info) gathered via _call; a VM is skipped only if `name` can't be read.
+  * Non-essential fields (autostart/persistent) are best-effort — a missing method can never drop a VM again.
+  * Made listAllDomains flags explicit (ACTIVE | INACTIVE) for clarity.
+  * Verified the real method names used elsewhere (create/destroy/shutdownFlags/shutdown/reset/reboot/info/state/memoryStats/XMLDesc/blockStats/blockInfo/interfaceStats, conn.getHostname/getInfo/numOfDomains) are all correct libvirt-python names.
+- Verified the fix with a mock domain exposing `autostart()` (not `autostartEnabled()`): the VM is now returned with state=running, vcpu=2, autostart=True, instead of being dropped. Module imports cleanly (HAS_LIBVIRT=False in sandbox, but logic path exercised).
+
+Stage Summary:
+- Root cause: wrong libvirt-python method name (`autostartEnabled` vs `autostart`) inside a try/except that swallowed it, dropping all VMs.
+- Fix in backend/app/libvirt_api.py. User must rebuild the image: `docker compose build && docker compose up -d --force-recreate` (frontend layer is cached; only the backend app copy layer onward reruns — fast).

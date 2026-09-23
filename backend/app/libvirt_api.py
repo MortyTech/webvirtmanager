@@ -140,34 +140,64 @@ def host_status(host: str) -> Dict[str, Any]:
     }
 
 
+def _call(obj, primary: str, *fallbacks, default=None):
+    """Call the first existing method on a libvirt object.
+
+    libvirt-python names vary a bit across versions, so we try `primary` then
+    `fallbacks`. Returns `default` if none exist (never raises), so a missing
+    non-essential method can never cause a whole VM to be dropped from the list.
+    """
+    for name in (primary, *fallbacks):
+        fn = getattr(obj, name, None)
+        if callable(fn):
+            try:
+                return fn()
+            except Exception:
+                continue
+    return default
+
+
 def list_vms(host: str) -> List[Dict[str, Any]]:
     conn, lock = _get_conn(host)
     out: List[Dict[str, Any]] = []
     with lock:
         try:
-            domains = conn.listAllDomains(0)
+            # Explicit ACTIVE | INACTIVE so we always see running + shutoff
+            # domains (flags=0 also returns all, but be unambiguous).
+            flags = 0
+            if HAS_LIBVIRT:
+                flags = (
+                    getattr(libvirt, "VIR_CONNECT_LIST_DOMAINS_ACTIVE", 0)
+                    | getattr(libvirt, "VIR_CONNECT_LIST_DOMAINS_INACTIVE", 0)
+                )
+            domains = conn.listAllDomains(flags)
         except Exception as e:
             raise HostUnreachable(str(e))
         for dom in domains:
-            try:
-                state, _reason = dom.state()
-                info = dom.info()  # [state, maxmem, memory, nvcpu, cputime]
-                name = dom.name()
-                uuid = dom.UUIDString()
-                out.append({
-                    "name": name,
-                    "uuid": uuid,
-                    "state_code": int(state),
-                    "state": _STATE_MAP.get(int(state), "unknown"),
-                    "vcpu": int(info[3]),
-                    "max_memory_kib": int(info[1]),
-                    "memory_kib": int(info[2]),
-                    "cpu_time_ns": int(info[4]),
-                    "autostart": bool(dom.autostartEnabled()),
-                    "persistent": bool(dom.isPersistent()),
-                })
-            except Exception:
+            # Essential fields — if these genuinely fail, skip the VM.
+            name = _call(dom, "name", "getName")
+            uuid = _call(dom, "UUIDString", "getUUIDString", default="")
+            state_pair = _call(dom, "state", "getState", default=(0, 0))
+            info = _call(dom, "info", "getInfo", default=[0, 0, 0, 0, 0])
+            if name is None:
                 continue
+            state_code = int(state_pair[0]) if state_pair else 0
+            # Non-essential fields are best-effort: a missing method here must
+            # never drop the whole VM from the list.
+            autostart = bool(_call(dom, "autostart", "getAutostart", "autostartEnabled", default=0) or 0)
+            persistent = bool(_call(dom, "isPersistent", "persistent", default=0) or 0)
+            out.append({
+                "name": name,
+                "uuid": uuid or "",
+                "state_code": state_code,
+                "state": _STATE_MAP.get(state_code, "unknown"),
+                "vcpu": int(info[3]) if info else 0,
+                "max_memory_kib": int(info[1]) if info else 0,
+                "memory_kib": int(info[2]) if info else 0,
+                "cpu_time_ns": int(info[4]) if info else 0,
+                "autostart": autostart,
+                "persistent": persistent,
+            })
     out.sort(key=lambda d: d["name"])
     return out
 

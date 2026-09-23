@@ -119,3 +119,18 @@ Stage Summary:
 - VNC console: bigger, with Ctrl+Alt+Del, Fit/1:1, and native Fullscreen (Esc/F11 exit).
 - VM table: clickable Name/State sort headers; STATE badge now sits directly beside the VM name (left side), left-aligned.
 - User rebuilds: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-5
+Agent: main (Z.ai Code)
+Task: Fix inconsistent VM-table column alignment (NAME/STATE/vCPU/MEMORY misaligned across rows; ACTIONS aligned).
+
+Root cause:
+- VmTable rendered each row as its OWN CSS grid (grid-cols-[auto_...]). An `auto` NAME column resolves independently PER ROW to that row's name width, so a short name ("jira") gave a narrow NAME cell and a long name ("mailserver") a wider one -> STATE/vCPU/MEMORY started at different x per row. ACTIONS looked aligned only because it was 1fr + justify-end (always pinned to the right edge).
+
+Fix:
+- Converted VmTable to a real <table> with table-layout:auto (default). A table sizes each column to the WIDEST cell across ALL rows (header + data), so column widths are consistent across every row BY DEFINITION. STATE ends up right beside the longest name; long names truncate at max-w-[260px]. Kept the clickable sortable Name/State headers (th buttons + chevron). Wrapped in overflow-x-auto for narrow screens.
+- Verified: frontend `bun run build` passes.
+
+Stage Summary:
+- VM table columns now align vertically across all rows (single shared column structure via <table>), header included. Sortable Name/State retained. Rebuild: `docker compose build && docker compose up -d --force-recreate`.

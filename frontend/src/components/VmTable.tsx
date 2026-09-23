@@ -88,8 +88,6 @@ export function VmTable({
       <ChevronUp className="h-3 w-3 opacity-25" />
     );
 
-  const grid = "grid grid-cols-[auto_104px_56px_88px_1fr] gap-2 px-4";
-
   return (
     <Card className="h-fit">
       <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
@@ -121,101 +119,116 @@ export function VmTable({
               : "Connect libvirt (qemu+ssh) to list domains."}
           </div>
         ) : (
-          <div className="divide-y">
-            <div
-              className={cn(
-                grid,
-                "py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide"
-              )}
-            >
-              <button
-                onClick={() => toggleSort("name")}
-                className="flex items-center gap-1 hover:text-foreground transition-colors"
-              >
-                Name <SortIcon active={sortKey === "name"} />
-              </button>
-              <button
-                onClick={() => toggleSort("state")}
-                className="flex items-center gap-1 hover:text-foreground transition-colors"
-              >
-                State <SortIcon active={sortKey === "state"} />
-              </button>
-              <span className="text-right">vCPU</span>
-              <span className="text-right">Memory</span>
-              <span className="text-right">Actions</span>
-            </div>
-            {sorted.map((vm) => {
-              const isRunning = vm.state === "running";
-              const isBusy = busyKey === `${vm.name}:*`;
-              return (
-                <div key={vm.uuid || vm.name} className={cn(grid, "py-2.5 items-center text-sm")}>
-                  <div className="font-medium truncate min-w-0 max-w-[240px]">{vm.name}</div>
-                  <div className="flex justify-start">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "w-20 justify-center whitespace-nowrap gap-1.5",
-                        STATE_STYLES[vm.state]
-                      )}
+          // A real <table> guarantees consistent column widths across ALL rows
+          // (header + data) — table-layout:auto sizes each column to its
+          // widest cell, so STATE sits right beside the longest name AND every
+          // row's columns line up vertically.
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-border text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left font-medium px-4 py-2 align-middle">
+                    <button
+                      onClick={() => toggleSort("name")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
                     >
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          vm.state === "running" && "bg-emerald-500",
-                          vm.state === "paused" && "bg-amber-500",
-                          (vm.state === "stopped" || vm.state === "shutdown") && "bg-zinc-400"
-                        )}
-                      />
-                      {vm.state}
-                    </Badge>
-                  </div>
-                  <div className="tabular-nums text-right">{vm.vcpu}</div>
-                  <div className="tabular-nums text-right">{formatKiB(vm.max_memory_kib)}</div>
-                  <div className="flex items-center justify-end gap-1">
-                    {isRunning ? (
-                      <>
-                        <Button size="xs" variant="ghost" onClick={() => onAction(vm, "soft-shutdown")} title="Soft shutdown (ACPI)">
-                          <Power className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" variant="ghost" onClick={() => onAction(vm, "soft-reboot")} title="Soft reboot (ACPI)">
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Hard power off">
-                          <Power className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "hard-reset")} title="Hard reset">
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" variant="outline" onClick={() => onStats(vm)} title="Stats">
-                          <Activity className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" variant="outline" onClick={() => onConsole(vm)} title="VNC console">
-                          <MonitorPlay className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button size="xs" variant="ghost" disabled={vm.state === "paused"} onClick={() => onAction(vm, "power-on")} title="Power on">
-                          <Play className="h-3.5 w-3.5" />
-                        </Button>
-                        {vm.state === "paused" && (
-                          <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Hard power off">
-                            <Power className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        <Button size="xs" variant="outline" onClick={() => onStats(vm)} title="Stats">
-                          <Activity className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="xs" variant="outline" disabled title="VM not running">
-                          <MonitorPlay className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    )}
-                    {isBusy && <Spinner className="text-muted-foreground" />}
-                  </div>
-                </div>
-              );
-            })}
+                      Name <SortIcon active={sortKey === "name"} />
+                    </button>
+                  </th>
+                  <th className="text-left font-medium px-2 py-2 align-middle">
+                    <button
+                      onClick={() => toggleSort("state")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      State <SortIcon active={sortKey === "state"} />
+                    </button>
+                  </th>
+                  <th className="text-right font-medium px-2 py-2 align-middle">vCPU</th>
+                  <th className="text-right font-medium px-2 py-2 align-middle">Memory</th>
+                  <th className="text-right font-medium px-4 py-2 align-middle">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((vm) => {
+                  const isRunning = vm.state === "running";
+                  const isBusy = busyKey === `${vm.name}:*`;
+                  return (
+                    <tr key={vm.uuid || vm.name} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2.5 align-middle">
+                        <div className="font-medium truncate max-w-[260px]">{vm.name}</div>
+                      </td>
+                      <td className="px-2 py-2.5 align-middle">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "w-20 justify-center whitespace-nowrap gap-1.5",
+                            STATE_STYLES[vm.state]
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              vm.state === "running" && "bg-emerald-500",
+                              vm.state === "paused" && "bg-amber-500",
+                              (vm.state === "stopped" || vm.state === "shutdown") && "bg-zinc-400"
+                            )}
+                          />
+                          {vm.state}
+                        </Badge>
+                      </td>
+                      <td className="px-2 py-2.5 align-middle text-right tabular-nums">{vm.vcpu}</td>
+                      <td className="px-2 py-2.5 align-middle text-right tabular-nums">
+                        {formatKiB(vm.max_memory_kib)}
+                      </td>
+                      <td className="px-4 py-2.5 align-middle">
+                        <div className="flex items-center justify-end gap-1">
+                          {isRunning ? (
+                            <>
+                              <Button size="xs" variant="ghost" onClick={() => onAction(vm, "soft-shutdown")} title="Soft shutdown (ACPI)">
+                                <Power className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="ghost" onClick={() => onAction(vm, "soft-reboot")} title="Soft reboot (ACPI)">
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Hard power off">
+                                <Power className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "hard-reset")} title="Hard reset">
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="outline" onClick={() => onStats(vm)} title="Stats">
+                                <Activity className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="outline" onClick={() => onConsole(vm)} title="VNC console">
+                                <MonitorPlay className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button size="xs" variant="ghost" disabled={vm.state === "paused"} onClick={() => onAction(vm, "power-on")} title="Power on">
+                                <Play className="h-3.5 w-3.5" />
+                              </Button>
+                              {vm.state === "paused" && (
+                                <Button size="xs" variant="ghost" className="text-destructive" onClick={() => onAction(vm, "power-off")} title="Hard power off">
+                                  <Power className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              <Button size="xs" variant="outline" onClick={() => onStats(vm)} title="Stats">
+                                <Activity className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="outline" disabled title="VM not running">
+                                <MonitorPlay className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                          {isBusy && <Spinner className="text-muted-foreground" />}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </CardContent>

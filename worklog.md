@@ -99,3 +99,23 @@ Stage Summary:
 - STATE column now left-aligned with fixed-width badges -> aligned.
 - VNC: the proxy now either successfully reaches a verified VNC server (noVNC connects) or fails at the POST with a concrete error message visible in the modal + `docker logs webvirt`. The previous race (token handed out before the tunnel was ready) is eliminated.
 - User must rebuild: `docker compose build && docker compose up -d --force-recreate`. After rebuild, if VNC still fails, the modal will now show the REAL reason (e.g. ssh auth, tunnel timeout, no RFB greeting) and `docker logs webvirt` will have the [vnc] trace.
+
+---
+Task ID: bugfix-4
+Agent: main (Z.ai Code)
+Task: VNC console size + toolbar (Ctrl+Alt+Del, Fit, Fullscreen), sort VMs by Name/State, STATE alignment beside name.
+
+Work Log:
+- VNC console (VncConsole.tsx): made the modal bigger (96vw / 88vh, max-w-6xl, flex-col). Console area is now flex-1 (fills the modal) and is the native-fullscreen target. Added a toolbar with 3 buttons:
+  * Ctrl+Alt+Del -> rfb.sendCtrlAltDel() (disabled until connected).
+  * Fit / 1:1 -> toggles rfb.scaleViewport (Fit = scaled to window; 1:1 = native resolution).
+  * Fullscreen -> consoleAreaRef.requestFullscreen() (native Fullscreen API; exits via Esc/F11 like any tab). Tracks fullscreenchange to swap Expand/Shrink icon. Closing the dialog also exits native fullscreen.
+- Extended novnc.d.ts RfbInstance with sendCtrlAltDel().
+- VM sorting (VmTable.tsx): NAME and STATE column headers are now clickable buttons; clicking toggles asc/desc (chevron rotates), clicking the other column switches the sort key. Sorts: by name (localeCompare) or by state (power-state priority: running < paused < suspended < blocked < shutdown < stopped < crashed, then name within same state).
+- STATE alignment: moved STATE right beside the NAME by changing the NAME column from 1fr (expands, pushes state away) to auto (shrinks to content, capped at 240px with truncate). Grid is now [auto_104px_56px_88px_1fr] (ACTIONS=1fr absorbs slack, buttons right-aligned). STATE cell left-aligned (flex justify-start), badge fixed w-20. So the state badge sits immediately after the VM name on the left side of the row.
+- Verified: frontend `bun run build` passes (tsc + vite), Next.js `bun run lint` clean, dev server compiles.
+
+Stage Summary:
+- VNC console: bigger, with Ctrl+Alt+Del, Fit/1:1, and native Fullscreen (Esc/F11 exit).
+- VM table: clickable Name/State sort headers; STATE badge now sits directly beside the VM name (left side), left-aligned.
+- User rebuilds: `docker compose build && docker compose up -d --force-recreate`.

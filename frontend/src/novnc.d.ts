@@ -6,6 +6,7 @@ declare module "@novnc/novnc" {
     disconnect(): void;
     sendCredentials(c: { password: string }): void;
     scaleViewport: boolean;
+    sendCtrlAltDel(): void;
     addEventListener(
       event: string,
       cb: (ev: { detail: { password?: boolean } }) => void

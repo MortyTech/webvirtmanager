@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
+  ChevronUp,
   MonitorPlay,
   Play,
   Power,
@@ -24,6 +25,19 @@ const STATE_STYLES: Record<string, string> = {
   suspended: "border-amber-500/40 bg-amber-500/10 text-amber-600",
 };
 
+// Power-state sort priority (running first, dead last).
+const STATE_ORDER: Record<string, number> = {
+  running: 0,
+  paused: 1,
+  suspended: 2,
+  blocked: 3,
+  shutdown: 4,
+  stopped: 5,
+  crashed: 6,
+};
+
+type SortKey = "name" | "state";
+
 export function VmTable({
   host,
   vms,
@@ -42,7 +56,39 @@ export function VmTable({
   busyKey: string | null;
 }) {
   const reachable = host?.reachable;
-  const sorted = useMemo(() => [...vms].sort((a, b) => a.name.localeCompare(b.name)), [vms]);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    const arr = [...vms];
+    arr.sort((a, b) => {
+      if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
+      const so = (STATE_ORDER[a.state] ?? 99) - (STATE_ORDER[b.state] ?? 99);
+      return so * dir || a.name.localeCompare(b.name);
+    });
+    return arr;
+  }, [vms, sortKey, sortDir]);
+
+  const SortIcon = ({ active }: { active: boolean }) =>
+    active ? (
+      <ChevronUp
+        className={cn("h-3 w-3 transition-transform", sortDir === "desc" && "rotate-180")}
+      />
+    ) : (
+      <ChevronUp className="h-3 w-3 opacity-25" />
+    );
+
+  const grid = "grid grid-cols-[auto_104px_56px_88px_1fr] gap-2 px-4";
 
   return (
     <Card className="h-fit">
@@ -76,9 +122,24 @@ export function VmTable({
           </div>
         ) : (
           <div className="divide-y">
-            <div className="grid grid-cols-[1fr_100px_56px_88px_auto] gap-2 px-4 py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-              <span>Name</span>
-              <span>State</span>
+            <div
+              className={cn(
+                grid,
+                "py-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide"
+              )}
+            >
+              <button
+                onClick={() => toggleSort("name")}
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                Name <SortIcon active={sortKey === "name"} />
+              </button>
+              <button
+                onClick={() => toggleSort("state")}
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                State <SortIcon active={sortKey === "state"} />
+              </button>
               <span className="text-right">vCPU</span>
               <span className="text-right">Memory</span>
               <span className="text-right">Actions</span>
@@ -87,13 +148,16 @@ export function VmTable({
               const isRunning = vm.state === "running";
               const isBusy = busyKey === `${vm.name}:*`;
               return (
-                <div
-                  key={vm.uuid || vm.name}
-                  className="grid grid-cols-[1fr_100px_56px_88px_auto] gap-2 px-4 py-2.5 items-center text-sm"
-                >
-                  <div className="font-medium truncate min-w-0">{vm.name}</div>
+                <div key={vm.uuid || vm.name} className={cn(grid, "py-2.5 items-center text-sm")}>
+                  <div className="font-medium truncate min-w-0 max-w-[240px]">{vm.name}</div>
                   <div className="flex justify-start">
-                    <Badge variant="outline" className={cn("w-20 justify-center whitespace-nowrap gap-1.5", STATE_STYLES[vm.state])}>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "w-20 justify-center whitespace-nowrap gap-1.5",
+                        STATE_STYLES[vm.state]
+                      )}
+                    >
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",

@@ -78,3 +78,24 @@ Stage Summary:
 - 6 distinct bugs fixed across backend (libvirt_api.py, routes.py, vnc_proxy via vm_vnc_info) and frontend (utils.ts, HostSidebar, VmTable, VmStatsSheet).
 - User must rebuild: `docker compose build && docker compose up -d --force-recreate` (frontend rebuilds; backend Python + frontend copied into image).
 - VNC should now open (route fixed; user's VNC XML listen=172.16.21.13 autoport=yes -> live XML gives real port, SSH tunnel to that addr:port).
+
+---
+Task ID: bugfix-3
+Agent: main (Z.ai Code)
+Task: Fix STATE column misalignment + VNC "VNC session disconnected" (tunnel/handshake failure).
+
+Work Log:
+- STATE alignment: badges were centered (w-20) while the narrow "STATE" header text was centered too, so the badge's left edge sat left of the header's left edge -> looked misaligned. Switched both header and the state cell to LEFT-alignment (header left, cell `flex justify-start`, badge stays fixed w-20 with centered content). Now badge left edge == header left edge == cell left edge; all rows' badges share the same left edge.
+- VNC disconnect root cause: create_vnc_session returned a token after only a 0.4s fixed sleep — too short for the SSH control connection + local forward to bind. noVNC then connected via the WS pump to a not-yet-ready local port -> TCP refused/EOF -> pump closed the WS -> noVNC fired `disconnect` (detail.password=false) -> "VNC session disconnected". The VM was fine; the proxy layer raced.
+- Hardened vnc_proxy.py:
+  * _spawn_tunnel: replaced the fixed 0.4s sleep with a real readiness poll — retry TCP connect to 127.0.0.1:local_port for up to 8s; if ssh exits first, surface its stderr; if timeout, raise a clear "tunnel did not become ready" error.
+  * Added _probe_vnc(): after the tunnel is up, open a THROWAWAY connection to the local port and read the first 13 bytes — must start with "RFB " (real VNC server greeting). VNC servers accept multiple concurrent clients, so the noVNC session later opens its own fresh connection and the server re-sends the greeting. This verifies end-to-end: ssh auth OK + forward bound + remote listen addr reachable + a real VNC server on that port.
+  * create_vnc_session now probes BEFORE handing out a token; on probe failure it kills the tunnel and raises a specific RuntimeError -> the POST /api/hosts/{host}/vms/{vm}/vnc returns 409 with a clear reason (e.g. "VNC unreachable on turin3 (vnc_port=5901, listen=172.16.21.13): ...") instead of the frontend showing a generic WS disconnect.
+  * Added print(...flush=True) logging at every step (spawn, probe ok, session created, ws connect, tcp connect fail, ws ended) so `docker logs webvirt` shows the full chain.
+- The user's VNC XML (listen='172.16.21.13', autoport='yes') is handled correctly: vm_vnc_info parses the LIVE XML of the running domain (real port 5900+N, not -1), and the SSH tunnel targets listen_addr:vnc_port from the remote host (172.16.21.13 is turin3's own NIC, so turin3 can reach it).
+- Verified: backend imports OK (_probe_vnc present), frontend `bun run build` passes.
+
+Stage Summary:
+- STATE column now left-aligned with fixed-width badges -> aligned.
+- VNC: the proxy now either successfully reaches a verified VNC server (noVNC connects) or fails at the POST with a concrete error message visible in the modal + `docker logs webvirt`. The previous race (token handed out before the tunnel was ready) is eliminated.
+- User must rebuild: `docker compose build && docker compose up -d --force-recreate`. After rebuild, if VNC still fails, the modal will now show the REAL reason (e.g. ssh auth, tunnel timeout, no RFB greeting) and `docker logs webvirt` will have the [vnc] trace.

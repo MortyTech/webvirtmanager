@@ -67,6 +67,10 @@ def _spawn_tunnel(ssh_target: str, vnc_port: int, listen: str) -> tuple[Optional
         "-o", "ServerAliveCountMax=3",
         ssh_target,
     ]
+    print(
+        f"[vnc] spawning ssh tunnel: {ssh_target}  127.0.0.1:{local_port} -> {target_host}:{vnc_port}",
+        flush=True,
+    )
     try:
         proc = subprocess.Popen(
             args,
@@ -77,26 +81,88 @@ def _spawn_tunnel(ssh_target: str, vnc_port: int, listen: str) -> tuple[Optional
         )
     except FileNotFoundError as e:
         raise RuntimeError("openssh client (ssh) not found in PATH") from e
-    # Give the tunnel a brief moment to establish; if it died immediately, fail.
-    time.sleep(0.4)
-    if proc.poll() is not None:
-        err = b""
+
+    # Wait until the local forward actually accepts a TCP connection (or ssh exits).
+    deadline = time.time() + 8.0
+    last_err = ""
+    while time.time() < deadline:
+        rc = proc.poll()
+        if rc is not None:
+            err = b""
+            try:
+                err = proc.stderr.read() or b""
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"ssh tunnel exited (rc={rc}): {err.decode(errors='replace').strip()}"
+            )
         try:
-            err = proc.stderr.read() or b""
-        except Exception:
-            pass
-        raise RuntimeError(f"ssh tunnel failed: {err.decode(errors='replace').strip()}")
-    return proc, local_port
+            s = socket.create_connection(("127.0.0.1", local_port), timeout=1)
+            s.close()
+            return proc, local_port
+        except Exception as e:
+            last_err = str(e)
+            time.sleep(0.15)
+    raise RuntimeError(
+        f"ssh tunnel did not become ready on 127.0.0.1:{local_port} within 8s: {last_err}"
+    )
+
+
+def _probe_vnc(local_port: int, timeout: float = 5.0) -> None:
+    """Verify the tunneled port actually speaks RFB (a real VNC server is there).
+
+    Uses a throwaway connection — VNC servers accept multiple concurrent
+    clients, so the noVNC session later opens its own fresh connection and the
+    server sends the RFB greeting again."""
+    deadline = time.time() + timeout
+    last = ""
+    while time.time() < deadline:
+        try:
+            s = socket.create_connection(("127.0.0.1", local_port), timeout=2)
+            try:
+                s.settimeout(2)
+                greeting = s.recv(13)
+            finally:
+                s.close()
+            if greeting.startswith(b"RFB "):
+                print(f"[vnc] probe ok on local port {local_port}: {greeting!r}", flush=True)
+                return
+            last = f"unexpected greeting {greeting!r}"
+        except Exception as e:
+            last = str(e)
+            time.sleep(0.2)
+    raise RuntimeError(
+        f"VNC server did not answer RFB handshake on local tunnel port {local_port}: {last}"
+    )
 
 
 def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
     info = vm_vnc_info(host, vm)
     if not info.get("port"):
-        raise RuntimeError("VM has no VNC graphics device configured")
+        raise RuntimeError(
+            "VM has no VNC graphics device configured, or it is not running yet "
+            "(autoport port is unassigned until the domain is running)."
+        )
     if info.get("state") not in ("running",):
         raise RuntimeError(f"VM is {info.get('state')}, cannot open VNC")
     ssh_target = _ssh_target(uri)
-    proc, local_port = _spawn_tunnel(ssh_target, int(info["port"]), info.get("listen", "127.0.0.1"))
+    proc, local_port = _spawn_tunnel(
+        ssh_target, int(info["port"]), info.get("listen", "127.0.0.1")
+    )
+    # Verify end-to-end that the tunnel reaches a real VNC server BEFORE handing
+    # out a token. If this fails, the POST returns a clear reason instead of the
+    # frontend showing a generic "VNC session disconnected".
+    try:
+        _probe_vnc(local_port)
+    except Exception as e:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"VNC unreachable on {host} (vnc_port={info['port']}, "
+            f"listen={info.get('listen')}): {e}"
+        )
     token = secrets.token_urlsafe(32)
     with _lock:
         _sessions[token] = {
@@ -108,6 +174,11 @@ def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
             "last_seen": time.time(),
             "owner_sid": owner_sid,
         }
+    print(
+        f"[vnc] session created: host={host} vm={vm} vnc_port={info['port']} "
+        f"listen={info.get('listen')} local_port={local_port}",
+        flush=True,
+    )
     return {"token": token, "path": f"/vnc/ws/{token}", "vnc_port": info["port"]}
 
 
@@ -232,15 +303,18 @@ async def vnc_ws(websocket: WebSocket, token: str):
         local_port = entry["local_port"]
 
     # 3. accept WS and open TCP to the local SSH tunnel
+    print(f"[vnc] ws connect -> 127.0.0.1:{local_port}", flush=True)
     await websocket.accept()
     try:
         reader, writer = await asyncio.open_connection("127.0.0.1", local_port)
-    except Exception:
+    except Exception as e:
+        print(f"[vnc] tcp connect to 127.0.0.1:{local_port} failed: {e}", flush=True)
         await websocket.close(code=1011)
         return
 
     try:
         await _pump(websocket, reader, writer)
     finally:
+        print(f"[vnc] ws session ended (local_port={local_port})", flush=True)
         # keep the session alive for quick reconnects; reaper will clean up.
         pass

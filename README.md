@@ -17,6 +17,11 @@ A containerized web app that does what `virt-manager` does, but in the browser:
 
 ---
 
+## Screenshots
+![Project Screenshot](darkmode.jpeg)
+
+---
+
 ## Features (exactly what's implemented)
 
 - Host list with reachability status (probed via libvirt `openReadOnly`).

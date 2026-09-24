@@ -30,7 +30,7 @@ client_type = confidential
 # Used verbatim as the redirect_uri in the auth request and as the path of the
 # callback route. Never derived from the Host header — must match what the IdP
 # has registered, byte-for-byte.
-redirect_url = https://adc.example.com/oauth2/callback
+redirect_url = https://webvirt.example.com/oauth2/callback
 
 # Fallback end-session endpoint used only if the discovery document does not
 # expose an end_session_endpoint. RP-initiated logout passes id_token_hint and

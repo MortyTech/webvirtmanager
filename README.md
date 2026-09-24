@@ -58,7 +58,7 @@ issuer = https://keycloak.example.com/realms/example
 client_id = my-client-id
 client_secret = my-client-secret                 ; OMIT entirely for public (PKCE) clients
 client_type = confidential                         ; or "public"
-redirect_url = https://adc.example.com/oauth2/callback ; used verbatim — never derived from the Host header
+redirect_url = https://webvirt.example.com/oauth2/callback ; used verbatim — never derived from the Host header
 backend_logout_url = https://keycloak.example.com/realms/example/protocol/openid-connect/logout
 scope = "openid profile email"                    ; read from config, never hardcoded
 oidc_groups_claim = groups                        ; parsed from the ID token / userinfo
@@ -97,6 +97,47 @@ mode = ssh
 - **Public client**: Authorization Code + **PKCE (S256)**; no secret anywhere.
 - **State** is validated (CSRF); for public clients the **PKCE `code_verifier`**
   is stored server-side (keyed by `state`) and sent in the token exchange.
+
+#### What `redirect_url` and `backend_logout_url` are, and what to put in them
+
+`redirect_url` and `backend_logout_url` are **just example hostnames** in this file
+(`webvirt.example.com`, `keycloak.example.com`) — replace them with the real
+addresses of **your** Webvirt instance and **your** IdP.
+
+- **`redirect_url`** — the exact URL the IdP redirects the browser back to after
+  login. It is the public address users hit Webvirt at, with the fixed
+  `/oauth2/callback` path, and it **must match byte-for-byte** the redirect URI
+  registered on the IdP client. Use whatever scheme/host/port your deployment
+  actually exposes:
+
+  - Webvirt running directly (no reverse proxy), reached by IP+port:
+    ```
+    redirect_url = http://172.16.21.11:8000/oauth2/callback
+    ```
+  - Webvirt behind a reverse proxy / FQDN with TLS:
+    ```
+    redirect_url = https://webvirt.example.com/oauth2/callback
+    ```
+
+  Notes:
+  - `http://` vs `https://` matters — it must match how the IdP will call you
+    back (use `https://` when behind a TLS-terminating reverse proxy; `http://`
+    for a direct, no-TLS deployment like the IP example above).
+  - The host:port is your **public** address, not the container's internal one.
+    E.g. `docker run -p 8000:8000` reached on the host IP `172.16.21.11` →
+    `http://172.16.21.11:8000/oauth2/callback`.
+  - The path is always `/oauth2/callback` (the backend callback route).
+
+- **`backend_logout_url`** — the IdP's RP-initiated-logout endpoint. It's a
+  **fallback** used only if the OIDC discovery document does not expose an
+  `end_session_endpoint` (most do, including Keycloak). For Keycloak it's:
+  ```
+  backend_logout_url = https://keycloak.example.com/realms/example/protocol/openid-connect/logout
+  ```
+  On logout the app sends `id_token_hint` + `post_logout_redirect_uri` (derived
+  from the **origin** of `redirect_url`), so after the IdP logs the user out it
+  sends them back to Webvirt — which immediately re-triggers the login redirect.
+
 - **Groups claim** named by `oidc_groups_claim` is decoded from the ID token
   (falling back to userinfo) and stored in the session; exposed at `GET /api/me`.
 - **Token refresh**: expired access tokens are refreshed via the refresh token

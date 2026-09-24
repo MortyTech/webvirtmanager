@@ -267,3 +267,16 @@ Work Log:
 
 Stage Summary:
 - Caddyfile is now gitignored. README documents SESSION_SECRET and the random-on-start fallback. No "tunoo" string remains anywhere in source.
+
+---
+Task ID: bugfix-13
+Agent: main (Z.ai Code)
+Task: README: explain redirect_url + backend_logout_url (what they are, what address to use, IP-vs-FQDN example); rename example "adc" host to "webvirt".
+
+Work Log:
+- Replaced adc.example.com -> webvirt.example.com in README.md, backend/config.ini.example, src/components/showcase/info-views.tsx. No standalone "adc" remains.
+- README: added "#### What redirect_url and backend_logout_url are, and what to put in them" under ### OIDC behaviour. Clarifies: the example hostnames (webvirt.example.com / keycloak.example.com) are just examples — replace with YOUR deployment's addresses. redirect_url = the public URL users hit Webvirt at + fixed /oauth2/callback path; must match the IdP-registered URI byte-for-byte. Gives both examples: direct IP+port (http://172.16.21.11:8000/oauth2/callback) and reverse-proxy/FQDN+TLS (https://webvirt.example.com/oauth2/callback). Notes http-vs-https matters, public host:port not container-internal, path is always /oauth2/callback. backend_logout_url = IdP RP-initiated-logout endpoint, used only as a fallback when discovery has no end_session_endpoint; app sends id_token_hint + post_logout_redirect_uri (origin of redirect_url).
+- Verified: no "adc" left, `bun run lint` clean.
+
+Stage Summary:
+- README now explains redirect_url/backend_logout_url with the user's IP-based example; example host renamed adc -> webvirt everywhere. No code/build changes needed (docs + showcase text only).

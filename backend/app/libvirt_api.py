@@ -451,6 +451,21 @@ def vm_xml(host: str, vm: str) -> str:
                 raise RuntimeError(str(e)) from e
 
 
+def vm_dump_xml(host: str, vm: str) -> str:
+    """Return the domain XML for export (virsh dumpxml equivalent).
+
+    Returns the LIVE XML (current running state) with flag 0 — passwords are
+    masked, exactly like `virsh dumpxml <domain>` with no --security-info flag.
+    For a stopped (defined) domain this is the persistent definition.
+    """
+    dom, lock = _lookup_vm(host, vm)
+    with lock:
+        try:
+            return dom.XMLDesc(0)
+        except Exception as e:
+            raise RuntimeError(str(e)) from e
+
+
 def vm_define_xml(host: str, vm: str, xml: str) -> Dict[str, Any]:
     """Validate + apply edited domain XML (virDomainDefineXML).
 

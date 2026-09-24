@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Activity,
   ChevronUp,
+  Download,
   FileCode,
   FileUp,
   MonitorPlay,
@@ -49,6 +50,7 @@ export function VmTable({
   onStats,
   onConsole,
   onEditXml,
+  onExportXml,
   onImportXml,
   busyKey,
 }: {
@@ -59,6 +61,7 @@ export function VmTable({
   onStats: (vm: VmInfo) => void;
   onConsole: (vm: VmInfo) => void;
   onEditXml: (vm: VmInfo) => void;
+  onExportXml: (vm: VmInfo) => void;
   onImportXml: () => void;
   busyKey: string | null;
 }) {
@@ -219,6 +222,9 @@ export function VmTable({
                               <Button size="xs" variant="outline" onClick={() => onEditXml(vm)} title="Edit XML (virsh edit)">
                                 <FileCode className="h-3.5 w-3.5" />
                               </Button>
+                              <Button size="xs" variant="outline" onClick={() => onExportXml(vm)} title="Export XML (virsh dumpxml)">
+                                <Download className="h-3.5 w-3.5" />
+                              </Button>
                             </>
                           ) : (
                             <>
@@ -238,6 +244,9 @@ export function VmTable({
                               </Button>
                               <Button size="xs" variant="outline" onClick={() => onEditXml(vm)} title="Edit XML (virsh edit)">
                                 <FileCode className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="xs" variant="outline" onClick={() => onExportXml(vm)} title="Export XML (virsh dumpxml)">
+                                <Download className="h-3.5 w-3.5" />
                               </Button>
                             </>
                           )}

@@ -235,3 +235,21 @@ B) Dark/light theme toggle (frontend):
 Stage Summary:
 - Theme: light by default (or OS dark if no manual choice); toggle in header; persists across refresh via localStorage; smooth 180ms transition; no flash (pre-React script).
 - OIDC: [oidc] allowed_groups = A, B, C restricts login to those groups; empty/missing = allow all; no groups claim returned = deny (fail closed); denied attempts logged; clear HTML "Access denied" page. Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-11
+Agent: main (Z.ai Code)
+Task: Add "Export XML" button to VM actions (beside Edit) — downloads <vmname>.xml (virsh dumpxml equivalent).
+
+Work Log:
+- Backend:
+  * libvirt_api.py: vm_dump_xml(host, vm) -> dom.XMLDesc(0) (LIVE XML, passwords masked — faithful `virsh dumpxml`). Distinct from vm_xml (INACTIVE|SECURE, used by the editor / virsh edit).
+  * routes.py: GET /hosts/{host}/vms/{vm}/xml now takes ?live=1 -> calls vm_dump_xml (default still persistent for the editor).
+- Frontend:
+  * api.ts: dumpXml(host, vm) -> GET .../xml?live=1.
+  * VmTable.tsx: added "Export XML" outline button (Download icon, tooltip "Export XML (virsh dumpxml)") immediately after the Edit XML button, in BOTH the running- and stopped-VM action groups. New onExportXml prop + Download icon import.
+  * App.tsx: handleExportXml(vm) -> api.dumpXml, builds a Blob (application/xml), triggers a browser download named `<vm.name>.xml`, toasts "Exported <name>.xml", shows a spinner via busyKey during the fetch, error toast on failure.
+- Verified: backend imports OK, frontend `bun run build` passes, Next.js lint clean.
+
+Stage Summary:
+- New Export XML button beside Edit XML in every VM row downloads the domain's live XML as <vmname>.xml (= virsh dumpxml, passwords masked). Rebuild: `docker compose build && docker compose up -d --force-recreate`.

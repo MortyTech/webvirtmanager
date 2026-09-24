@@ -59,6 +59,10 @@ export const api = {
     req<{ host: string; vm: string; xml: string }>(
       `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/xml`
     ),
+  dumpXml: (host: string, vm: string) =>
+    req<{ host: string; vm: string; xml: string }>(
+      `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/xml?live=1`
+    ),
   saveXml: (host: string, vm: string, xml: string) =>
     req<{ ok: boolean; name?: string }>(
       `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/xml`,

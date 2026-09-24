@@ -164,10 +164,15 @@ async def vm_stats(host: str, vm: str):
 
 
 @router.get("/hosts/{host}/vms/{vm}/xml")
-async def vm_get_xml(host: str, vm: str):
-    """Return the domain XML for the editor (virsh edit equivalent)."""
+async def vm_get_xml(host: str, vm: str, live: bool = False):
+    """Return the domain XML.
+
+    - default (live=False): the persistent definition (virsh edit equivalent).
+    - ?live=1 : the LIVE XML (virsh dumpxml equivalent, passwords masked).
+    """
+    fn = lv.vm_dump_xml if live else lv.vm_xml
     try:
-        xml = await asyncio.get_event_loop().run_in_executor(None, lv.vm_xml, host, vm)
+        xml = await asyncio.get_event_loop().run_in_executor(None, fn, host, vm)
     except lv.HostNotFound:
         raise HTTPException(404, detail=f"unknown host: {host}")
     except lv.VmNotFound:

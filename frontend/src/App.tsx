@@ -92,6 +92,29 @@ export default function App() {
   }, [selectedHost, refreshVmList]);
 
   // ---- actions ------------------------------------------------------------
+  async function handleExportXml(vm: VmInfo) {
+    if (!selectedHost) return;
+    const key = `${vm.name}:*`;
+    setBusyKey(key);
+    try {
+      const r = await api.dumpXml(selectedHost, vm.name);
+      const blob = new Blob([r.xml], { type: "application/xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${vm.name}.xml`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: `Exported ${vm.name}.xml`, description: `${selectedHost} · virsh dumpxml (live)` });
+    } catch (e) {
+      toast({ title: `Export failed`, description: e instanceof Error ? e.message : String(e), variant: "error" });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   async function handleAction(vm: VmInfo, action: string) {
     if (!selectedHost) return;
     const key = `${vm.name}:*`;
@@ -190,6 +213,7 @@ export default function App() {
               setXmlVm(vm);
               setXmlOpen(true);
             }}
+            onExportXml={handleExportXml}
             onImportXml={() => setDefineOpen(true)}
             busyKey={busyKey}
           />

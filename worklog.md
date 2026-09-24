@@ -311,3 +311,19 @@ Work Log:
 
 Stage Summary:
 - Hosts are now per-host [sections] with mandatory auth_type (ssh_key|sasl|none). qemu+tcp supports plain (none) and SASL (username+password, fail-closed if missing). Per-host key_file for qemu+ssh is loaded into an in-process ssh-agent. Misconfig aborts startup naming the block(s); reload returns 400 keeping old config. Legacy [hosts] still works. Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-16
+Agent: main (Z.ai Code)
+Task: Fix qemu+tcp SASL "SASL(-4): no mechanism available: No worthy mechs found" — missing libsasl2 mechanism plugins in the container.
+
+Root cause:
+- The runtime stage installed libsasl2-2 (the core SASL library) but NOT libsasl2-modules (the mechanism plugins: digest-md5, scram-sha-256, cram-md5, plain, ...). Without the plugins, libsasl2 has no mechanism to offer during SASL negotiation -> "No worthy mechs found" at openAuth time, BEFORE credentials are even used.
+- virsh worked for the user because it runs on the host (which has libsasl2-modules installed), not in the container.
+
+Fix:
+- Dockerfile runtime apt: added libsasl2-modules (digest-md5/scram/cram-md5/plain/login/anonymous/ntlm — covers username/password SASL) and libsasl2-modules-gssapi-mit (Kerberos/GSSAPI SASL, for completeness).
+- No code change: the openAuth callback (username/password for VIR_CRED_USERNAME/PASSWORD/PASSPHRASE) is correct; the failure was purely the missing libsasl2 plugins.
+
+Stage Summary:
+- Rebuild the image (`docker compose build && docker compose up -d --force-recreate`) and qemu+tcp + auth_type=sasl will negotiate SASL and connect (the openAuth callback supplies the configured username/password, same as virsh interactive).

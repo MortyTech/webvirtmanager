@@ -41,6 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxml2 \
         libgnutls30 \
         libsasl2-2 \
+        libsasl2-modules \
+        libsasl2-modules-gssapi-mit \
         libyajl2 \
         openssh-client \
         ca-certificates \

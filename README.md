@@ -19,6 +19,8 @@ A containerized web app that does what `virt-manager` does, but in the browser:
 
 ## Screenshots
 ![Project Screenshot](darkmode.jpeg)
+![Project Screenshot](darkmode.jpeg)
+
 
 ---
 

@@ -293,3 +293,21 @@ Work Log:
 
 Stage Summary:
 - worklog.md is ignored by both git and docker. README's redirect_url example uses 192.168.1.1 (placeholder) and clearly tells the user to replace it with their own IP/FQDN.
+
+---
+Task ID: bugfix-15
+Agent: main (Z.ai Code)
+Task: Refactor host config to per-host INI sections; add qemu+tcp plain (none) + SASL; auth_type mandatory; fail-fast validation naming bad blocks; per-host key_file.
+
+Work Log:
+- config.py: HostConfig dataclass (name, connection_uri, auth_type, key_file, username, password; .transport derived from the URI scheme). Config.hosts is now Dict[str, HostConfig]. Parses each non-{oidc,vnc,hosts} section as a host (section name = host name). Backward compat: legacy [hosts] name=uri -> HostConfig(auth_type=ssh_key). ConfigError + _validate_hosts fail-fast: auth_type mandatory (ssh_key|sasl|none); sasl requires username AND password; none ignores username/password; transport<->auth consistency (qemu+ssh=>ssh_key, qemu+tcp=>sasl|none); missing connection_uri; lists EVERY offending [section]. ConfigStore.reload() raises on misconfig -> app refuses to start (module-load); reload endpoint catches and returns 400 keeping the old config.
+- libvirt_api.py: _open_conn(hcfg) — openAuth(uri, [cred_types, cb, None], 0) with a username/password callback for sasl (VIR_CRED_USERNAME/PASSWORD/PASSPHRASE); libvirt.open(uri) for ssh_key/none. _get_conn uses the HostConfig. _host_uri returns connection_uri.
+- vnc_proxy.py: create_vnc_session(host, vm, owner_sid) looks up the HostConfig itself (uri, key_file, transport). VNC reachability follows transport: tcp hosts ALWAYS direct (no ssh creds); ssh hosts tunnel unless vnc.mode=direct. _spawn_tunnel takes key_file and passes `ssh -i <key_file>` (expands ~) so the VNC tunnel uses the same per-host key as the libvirt connection.
+- ssh_agent.py (new): at startup, if any ssh_key host has a key_file, start an ssh-agent, ssh-add each unique key, export SSH_AUTH_SOCK into os.environ so libvirt's ssh subprocess + the VNC ssh tunnel inherit it. Graceful fallback (logs warning, hosts fall back to default key) if ssh-agent/ssh-add unavailable (sandbox has no ssh-agent; the Docker image's openssh-client includes both).
+- main.py lifespan: prints per-host summary "name(transport/auth_type)...", calls ssh_agent.maybe_start_agent(cfg.hosts); SIGHUP reload also re-runs the agent.
+- routes.py: vm_vnc passes (host, vm, owner_sid) to create_vnc_session (no more uri param); /config/reload catches ConfigError -> 400 with the validation message, keeps old config.
+- config.ini.example + README: documented the new per-host section format (ssh_key + optional key_file; sasl + required username/password; none ignores creds), transport/auth consistency, backward-compat [hosts], and the qemu+tcp connection paths. README "Connecting to the hypervisors" rewritten for the three auth models.
+- Verified: imports OK; mixed transports parse (node03 ssh/ssh_key, node02 tcp/sasl, node04 tcp/none); legacy [hosts] -> ssh_key; sasl-missing-password -> ConfigError naming [x]; missing auth_type -> error; qemu+ssh+none -> consistency error; bad /api/config/reload -> 400 naming [badhost] + old config kept (3 hosts); startup log shows host summary; lint clean.
+
+Stage Summary:
+- Hosts are now per-host [sections] with mandatory auth_type (ssh_key|sasl|none). qemu+tcp supports plain (none) and SASL (username+password, fail-closed if missing). Per-host key_file for qemu+ssh is loaded into an in-process ssh-agent. Misconfig aborts startup naming the block(s); reload returns 400 keeping old config. Legacy [hosts] still works. Rebuild: `docker compose build && docker compose up -d --force-recreate`.

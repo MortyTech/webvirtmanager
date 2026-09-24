@@ -28,11 +28,19 @@ STATIC_DIR = os.environ.get("STATIC_DIR", str(Path(__file__).resolve().parent.pa
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = get_config()
+    host_summary = ", ".join(
+        f"{name}({h.transport}/{h.auth_type})" for name, h in cfg.hosts.items()
+    ) or "(none)"
     print(
         f"[webvirt] config loaded from {cfg.path} | "
-        f"oidc.enabled={cfg.oidc.enabled} | hosts={list(cfg.hosts.keys())}",
+        f"oidc.enabled={cfg.oidc.enabled} | vnc.mode={cfg.vnc.mode} | "
+        f"hosts: {host_summary}",
         flush=True,
     )
+    # Load per-host key_files into an ssh-agent for the qemu+ssh libvirt
+    # connections (no-op if no host specifies a key_file).
+    from . import ssh_agent
+    ssh_agent.maybe_start_agent(cfg.hosts)
     start_reaper()
     # Optional SIGHUP reload (best-effort; uvicorn may own signals in some setups)
     try:
@@ -42,6 +50,8 @@ async def lifespan(app: FastAPI):
             print("[webvirt] SIGHUP received, reloading config", flush=True)
             reload_config()
             reset_client()
+            from . import ssh_agent as _sa
+            _sa.maybe_start_agent(get_config().hosts)
 
         signal.signal(signal.SIGHUP, _hup)
     except Exception:

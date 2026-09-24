@@ -60,28 +60,64 @@ allowed_groups = Admins, DevOps, Infrastructure
 # only use on trusted internal networks.
 # ---------------------------------------------------------------------------
 
-[hosts]
-node01 = qemu+ssh://root@node01/system
-node02 = qemu+ssh://root@node02/system
-node03 = qemu+ssh://root@node03/system
+# ---------------------------------------------------------------------------
+# Hosts — each host is its own [section] for granular control over the
+# connection transport and credentials. The section name is the host name.
+#
+# Mandatory keys:
+#   connection_uri  libvirt URI, e.g. qemu+ssh://user@host/system
+#                   or qemu+tcp://host/system
+#   auth_type        one of: ssh_key | sasl | none  (always mandatory)
+#
+# Per auth_type:
+#   ssh_key  (qemu+ssh) — key_file is OPTIONAL; if omitted, the default key
+#                         from the mounted ~/.ssh is used. If set, the key is
+#                         loaded into an in-process ssh-agent so both the
+#                         libvirt connection and the VNC ssh tunnel use it.
+#   sasl     (qemu+tcp) — username AND password are REQUIRED. If either is
+#                         missing the app REFUSES TO START, naming this block.
+#   none     (qemu+tcp) — plain, unauthenticated TCP. username/password are
+#                         ignored even if present.
+#
+# Transport/auth consistency is enforced: qemu+ssh => ssh_key,
+# qemu+tcp => sasl|none. A misconfigured block aborts startup (or, on
+# POST /api/config/reload, returns 400 and keeps the previous config).
+#
+# Backward compatibility: a legacy [hosts] section (name = uri) is still
+# accepted and treated as auth_type=ssh_key with the default key.
+# ---------------------------------------------------------------------------
+
+[node03]
+connection_uri = qemu+ssh://192.168.1.110/system
+auth_type = ssh_key
+key_file = ~/.ssh/id_rsa          ; omit to use the default mapped key
+
+[node02]
+connection_uri = qemu+tcp://192.168.1.111/system
+auth_type = sasl
+username = admin
+password = MySecretPassword123
+
+[node04]
+connection_uri = qemu+tcp://192.168.1.112/system
+auth_type = none                   ; plain TCP; username/password ignored
+
+# Legacy shorthand (still works, = ssh_key with the default key):
+# [hosts]
+# node01 = qemu+ssh://root@node01/system
 
 # ---------------------------------------------------------------------------
-# VNC console connection mode
+# VNC console connection mode (global override for qemu+ssh hosts)
 #
-# Controls how the WebSocket-to-VNC proxy reaches each VM's VNC port.
+#   ssh     (default) — per-session `ssh -N -L` tunnel to the host (uses the
+#                         host's key_file if set). Best when Webvirt is NOT on
+#                         the same network as the KVM host (NAT/firewall).
+#   direct            — skip the SSH tunnel, connect straight to <vnc host>:<port>.
+#                         Only works if the VM's VNC is bound to a reachable
+#                         address (0.0.0.0 or a host LAN IP), NOT 127.0.0.1.
 #
-#   ssh      (default) — establish a per-session `ssh -N -L` tunnel to the
-#                         hypervisor and bridge the VNC through it. Best when
-#                         the Webvirt container is NOT on the same network as
-#                         the KVM hosts (NAT / firewall between them).
-#
-#   direct            — connect straight to <vnc host>:<port> with no SSH
-#                         tunnel. Use this when Webvirt runs on the same LAN
-#                         as the KVM hosts (e.g. a container on the same
-#                         subnet) so the SSH tunnel is pure overhead.
-#                         REQUIRES the VM's VNC to be bound to a reachable
-#                         address (0.0.0.0 or a host LAN IP), NOT 127.0.0.1 —
-#                         the container cannot reach the host's loopback.
+# Note: qemu+tcp hosts ALWAYS use direct (no SSH credentials to tunnel with),
+# regardless of this setting.
 # ---------------------------------------------------------------------------
 [vnc]
 mode = ssh

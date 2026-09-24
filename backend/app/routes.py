@@ -105,7 +105,6 @@ async def vm_vnc(host: str, vm: str, request: Request):
     cfg = get_config()
     if host not in cfg.hosts:
         raise HTTPException(404, detail=f"unknown host: {host}")
-    uri = cfg.hosts[host]
     # owner session (for binding the token); anonymous if auth disabled
     owner_sid = ""
     session = getattr(request.state, "session", None)
@@ -113,7 +112,7 @@ async def vm_vnc(host: str, vm: str, request: Request):
         owner_sid = session.sid
     try:
         result = await asyncio.get_event_loop().run_in_executor(
-            None, create_vnc_session, host, vm, owner_sid, uri
+            None, create_vnc_session, host, vm, owner_sid
         )
     except lv.VmNotFound:
         raise HTTPException(404, detail=f"unknown vm: {vm}")
@@ -240,7 +239,13 @@ async def define_vm_from_xml(host: str, payload: dict = Body(...)):
 
 @router.post("/config/reload")
 async def reload_cfg():
-    new = reload_config()
+    from .config import ConfigError
+
+    try:
+        new = reload_config()
+    except ConfigError as e:
+        # Bad host block(s) — keep the old config; return the validation errors.
+        raise HTTPException(status_code=400, detail=str(e))
     # rebuild OIDC client on next access
     from . import auth
     auth.reset_client()

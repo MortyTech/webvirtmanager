@@ -70,17 +70,30 @@ oidc_groups_claim = groups                        ; parsed from the ID token / u
 # Denied attempts are logged: [auth] DENY user=... groups=... allowed_groups=...
 allowed_groups = Admins, DevOps, Infrastructure
 
-[hosts]
-node01 = qemu+ssh://root@node01/system
-node02 = qemu+ssh://root@node02/system
+# Hosts — each host is its own [section] for granular transport/auth control.
+# Mandatory: connection_uri + auth_type (ssh_key | sasl | none).
+#   ssh_key (qemu+ssh): key_file optional (omit = default mapped key)
+#   sasl    (qemu+tcp): username + password required (else the app won't start)
+#   none    (qemu+tcp): plain TCP; username/password ignored
+[node03]
+connection_uri = qemu+ssh://192.168.1.110/system
+auth_type = ssh_key
+key_file = ~/.ssh/id_rsa
 
-# VNC console connection mode:
-#   ssh (default) — per-session SSH tunnel to the host (NAT/firewall between
-#                   Webvirt and the KVM hosts).
-#   direct        — connect straight to <host>:<vnc port>, no SSH tunnel. Use
-#                   when Webvirt is on the same LAN as the KVM hosts. REQUIRES
-#                   the VM's VNC to listen on a reachable address
-#                   (0.0.0.0 or a host LAN IP), not 127.0.0.1.
+[node02]
+connection_uri = qemu+tcp://192.168.1.111/system
+auth_type = sasl
+username = admin
+password = MySecretPassword123
+
+# VNC console connection mode (global override for qemu+ssh hosts):
+#   ssh (default) — per-session SSH tunnel to the host (uses the host's key_file
+#                   if set). Best when Webvirt is NOT on the same network as the
+#                   KVM host (NAT/firewall).
+#   direct        — skip the tunnel, connect straight to <host>:<vnc port>. Use
+#                   when Webvirt is on the same LAN. REQUIRES the VM's VNC to
+#                   listen on a reachable address (0.0.0.0 or a host LAN IP),
+#                   not 127.0.0.1. (qemu+tcp hosts always use direct.)
 [vnc]
 mode = ssh
 ```
@@ -248,16 +261,32 @@ bun install && bun run dev            # http://localhost:5173
 
 ---
 
-## SSH to the hypervisors
+## Connecting to the hypervisors
 
-`qemu+ssh://root@node01/system` makes libvirt shell out to `ssh`. The container
-needs non-interactive SSH access to each hypervisor as the configured user:
+Each host section's `connection_uri` + `auth_type` decides how Webvirt reaches
+libvirt on that host:
 
-- Mount your SSH key (`~/.ssh`) read-only into `/root/.ssh` (see the run commands).
-- The key must be authorized on each host (e.g. `root@node01`'s `authorized_keys`).
-- `StrictHostKeyChecking=accept-new` is used for the per-session VNC tunnels so
-  first-connect prompts don't block. For libvirt's own connections, seed
-  `~/.ssh/known_hosts` once (`ssh root@node01 true`).
+- **`qemu+ssh` + `auth_type = ssh_key`** — libvirt shells out to `ssh`.
+  - `key_file` omitted → libvirt/ssh uses the **default** key from the mounted
+    `~/.ssh` (the usual case; just mount `~/.ssh:/root/.ssh:ro`).
+  - `key_file` set (e.g. `~/.ssh/id_rsa`) → that key is loaded into an
+    in-process **ssh-agent** at startup, so both the libvirt connection and the
+    VNC ssh tunnel use it (works even with a read-only `~/.ssh` mount).
+  - The key must be authorized on the host's `authorized_keys`.
+  - `StrictHostKeyChecking=accept-new` is used for the per-session VNC tunnels;
+    for libvirt's own connections, seed `~/.ssh/known_hosts` once
+    (`ssh root@node01 true`).
+
+- **`qemu+tcp` + `auth_type = sasl`** — libvirt connects over TCP with SASL
+  auth. `username` + `password` are mandatory (the app refuses to start without
+  them). The VNC console for these hosts is reached **directly** (no ssh tunnel).
+
+- **`qemu+tcp` + `auth_type = none`** — plain, unauthenticated TCP. Use only on
+  a trusted network. `username`/`password` are ignored even if present.
+
+`auth_type` is mandatory for every host; the transport/auth consistency is
+enforced (`qemu+ssh` ⇒ `ssh_key`, `qemu+tcp` ⇒ `sasl`|`none`). A misconfigured
+block aborts startup — the error names the offending `[section]`(s).
 
 ---
 

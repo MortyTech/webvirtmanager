@@ -54,7 +54,12 @@ def _ssh_target(uri: str) -> str:
     return f"{user}@{host}"
 
 
-def _spawn_tunnel(ssh_target: str, vnc_port: int, listen: str) -> tuple[Optional[subprocess.Popen], int]:
+def _spawn_tunnel(
+    ssh_target: str,
+    vnc_port: int,
+    listen: str,
+    key_file: str = "",
+) -> tuple[Optional[subprocess.Popen], int]:
     local_port = _alloc_local_port()
     target_host = listen if listen and listen not in ("0.0.0.0", "::", "*") else "127.0.0.1"
     args = [
@@ -65,10 +70,15 @@ def _spawn_tunnel(ssh_target: str, vnc_port: int, listen: str) -> tuple[Optional
         "-o", "ExitOnForwardFailure=yes",
         "-o", "ServerAliveInterval=30",
         "-o", "ServerAliveCountMax=3",
-        ssh_target,
     ]
+    # Per-host key (expands ~ and uses an absolute path to the mounted key).
+    if key_file:
+        kf = os.path.expanduser(key_file)
+        args += ["-i", kf]
+    args.append(ssh_target)
     print(
-        f"[vnc] spawning ssh tunnel: {ssh_target}  127.0.0.1:{local_port} -> {target_host}:{vnc_port}",
+        f"[vnc] spawning ssh tunnel: {ssh_target}  127.0.0.1:{local_port} -> "
+        f"{target_host}:{vnc_port} (key={key_file or 'default'})",
         flush=True,
     )
     try:
@@ -158,8 +168,16 @@ def _direct_target_host(uri: str, listen: str) -> str:
     return listen
 
 
-def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
+def create_vnc_session(host: str, vm: str, owner_sid: str) -> dict:
     from .config import get_config
+
+    cfg = get_config()
+    if host not in cfg.hosts:
+        raise RuntimeError(f"unknown host: {host}")
+    hcfg = cfg.hosts[host]
+    uri = hcfg.connection_uri
+    transport = hcfg.transport  # 'ssh', 'tcp', ...
+    key_file = hcfg.key_file if hcfg.auth_type == "ssh_key" else ""
 
     info = vm_vnc_info(host, vm)
     if not info.get("port"):
@@ -171,15 +189,20 @@ def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
         raise RuntimeError(f"VM is {info.get('state')}, cannot open VNC")
     vnc_port = int(info["port"])
     listen = info.get("listen", "127.0.0.1")
-    mode = (get_config().vnc.mode or "ssh").lower()
+    mode = (cfg.vnc.mode or "ssh").lower()
     if mode not in ("ssh", "direct"):
         mode = "ssh"
 
+    # Decide how the WS-to-VNC proxy reaches the VNC port:
+    #   - tcp transport host: always direct (no ssh credentials to tunnel with)
+    #   - ssh transport host: ssh tunnel unless vnc.mode = direct
+    use_tunnel = transport == "ssh" and mode != "direct"
+
     ssh_proc = None
-    if mode == "direct":
-        # Connect straight to the VNC port — no SSH tunnel. Only viable when
-        # the container is on the same network as the KVM host and the VNC is
-        # bound to a reachable address.
+    if not use_tunnel:
+        # Direct: connect straight to the VNC port. Only viable when the
+        # container can route to the host and the VNC is bound to a reachable
+        # address (not 127.0.0.1).
         target_host = _direct_target_host(uri, listen)
         target_port = vnc_port
         try:
@@ -187,14 +210,16 @@ def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
         except Exception as e:
             raise RuntimeError(
                 f"VNC unreachable directly at {target_host}:{target_port} "
-                f"(direct mode, listen={listen}): {e}. Ensure the VM's VNC is "
+                f"({transport} host, listen={listen}): {e}. Ensure the VM's VNC is "
                 f"bound to a reachable address (not 127.0.0.1) and the container "
-                f"can route to the host, or set [vnc] mode = ssh."
+                f"can route to the host; for ssh-transport hosts you can also set "
+                f"[vnc] mode = ssh to tunnel."
             )
     else:
-        # ssh mode (default): per-session SSH tunnel to the host.
+        # ssh tunnel to the host (uses the per-host key_file if set, else the
+        # default mapped key / ssh-agent).
         ssh_target = _ssh_target(uri)
-        proc, local_port = _spawn_tunnel(ssh_target, vnc_port, listen)
+        proc, local_port = _spawn_tunnel(ssh_target, vnc_port, listen, key_file)
         try:
             _probe_vnc_host("127.0.0.1", local_port)
         except Exception as e:
@@ -218,7 +243,7 @@ def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
             "target_host": target_host,
             "target_port": target_port,
             "ssh_proc": ssh_proc,  # None in direct mode
-            "mode": mode,
+            "mode": "ssh" if use_tunnel else "direct",
             "created_at": time.time(),
             "last_seen": time.time(),
             "owner_sid": owner_sid,

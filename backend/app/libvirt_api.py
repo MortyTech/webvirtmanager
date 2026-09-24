@@ -57,13 +57,49 @@ _pool_lock = threading.RLock()
 _pool: Dict[str, list] = {}  # host -> [conn, lock, last_err]
 
 
-def _host_uri(host: str) -> str:
+def _host_cfg(host: str):
+    """Return the HostConfig for a host name (raises HostNotFound)."""
     from .config import get_config
 
     cfg = get_config()
     if host not in cfg.hosts:
         raise HostNotFound(host)
     return cfg.hosts[host]
+
+
+def _host_uri(host: str) -> str:
+    return _host_cfg(host).connection_uri
+
+
+def _open_conn(hcfg):
+    """Open a libvirt RW connection using the host's auth model.
+
+    - ssh_key / none  -> libvirt.open(uri)  (ssh uses the default mapped key,
+                          or an in-process ssh-agent if a key_file was specified)
+    - sasl (qemu+tcp) -> libvirt.openAuth with a username/password callback
+    """
+    uri = hcfg.connection_uri
+    if hcfg.auth_type == "sasl":
+        # libvirt credential type constants (use getattr for robustness).
+        CRED_USERNAME = getattr(libvirt, "VIR_CRED_USERNAME", 1)
+        CRED_PASSWORD = getattr(libvirt, "VIR_CRED_PASSWORD", 3)
+        CRED_PASSPHRASE = getattr(libvirt, "VIR_CRED_PASSPHRASE", 4)
+        username = hcfg.username
+        password = hcfg.password
+
+        def _cb(creds, _userdata):
+            for c in creds:
+                # each cred: [type, prompt, challenge, default_result, result]
+                if c[0] == CRED_USERNAME:
+                    c[4] = username
+                elif c[0] in (CRED_PASSWORD, CRED_PASSPHRASE):
+                    c[4] = password
+            return 0
+
+        auth = [[CRED_USERNAME, CRED_PASSWORD, CRED_PASSPHRASE], _cb, None]
+        return libvirt.openAuth(uri, auth, 0)
+    # ssh_key or none
+    return libvirt.open(uri)
 
 
 def _get_conn(host: str):
@@ -89,9 +125,9 @@ def _get_conn(host: str):
                 except Exception:
                     pass
                 conn = None
-        uri = _host_uri(host)
+        hcfg = _host_cfg(host)
         try:
-            conn = libvirt.open(uri)  # read-write
+            conn = _open_conn(hcfg)  # read-write; openAuth for sasl, open otherwise
         except libvirt.libvirtError as e:  # type: ignore
             raise HostUnreachable(str(e)) from e
         _pool[host][0] = conn

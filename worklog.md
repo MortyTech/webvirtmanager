@@ -327,3 +327,20 @@ Fix:
 
 Stage Summary:
 - Rebuild the image (`docker compose build && docker compose up -d --force-recreate`) and qemu+tcp + auth_type=sasl will negotiate SASL and connect (the openAuth callback supplies the configured username/password, same as virsh interactive).
+
+---
+Task ID: bugfix-17
+Agent: main (Z.ai Code)
+Task: Fix qemu+tcp SASL "Failed to step SASL negotiation: -1 (SASL(-1): generic failure)" — openAuth callback wasn't filling AUTHNAME/REALM.
+
+Root cause:
+- After bugfix-16 (libsasl2-modules) the mechanism now negotiates, so the failure moved to sasl_client_step (SASL_FAIL "generic failure"). virsh (from inside the container, libvirt-client installed) works interactively with the same username/password — proving libsasl2 + the mechanism are fine; the difference is the Python openAuth callback.
+- The callback only advertised/handled VIR_CRED_USERNAME, VIR_CRED_PASSWORD, VIR_CRED_PASSPHRASE. But qemu+tcp SASL (digest-md5 / scram-sha-256 / cram-md5) requests VIR_CRED_AUTHNAME (the SASL authname — virsh's "Please enter your authentication name" prompt) and often VIR_CRED_REALM. With AUTHNAME left empty, digest-md5/scram can't compute a response -> sasl_client_step returns SASL_FAIL ("generic failure"). virsh's C callback fills all the credential types, so it works.
+
+Fix (libvirt_api.py _open_conn):
+- The SASL callback now advertises AND fills: VIR_CRED_USERNAME, VIR_CRED_AUTHNAME (both -> username), VIR_CRED_PASSWORD, VIR_CRED_PASSPHRASE (both -> password), VIR_CRED_REALM (-> the server-provided default realm c[3] if any, else ""). This is the canonical libvirt-python SASL credential set (matches what virt-manager / virsh's callback provide). libvirt-python auto-sets resultlen = len(c[4]).
+- Constants resolved via getattr with correct libvirt numbering (USERNAME=1, PASSWORD=3, PASSPHRASE=4, REALM=7, AUTHNAME=8) so it works across libvirt-python versions.
+- Verified: backend imports OK; lint clean. (Cannot exercise real SASL in the sandbox — no libvirt/real host — but the callback now matches the proven virt-manager/virsh credential set.)
+
+Stage Summary:
+- Rebuild: `docker compose build && docker compose up -d --force-recreate`. qemu+tcp + auth_type=sasl will now fill AUTHNAME (and REALM) so digest-md5/scram complete the step and connect with the configured username/password.

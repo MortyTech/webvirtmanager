@@ -77,6 +77,12 @@ def _open_conn(hcfg):
     - ssh_key / none  -> libvirt.open(uri)  (ssh uses the default mapped key,
                           or an in-process ssh-agent if a key_file was specified)
     - sasl (qemu+tcp) -> libvirt.openAuth with a username/password callback
+
+    The SASL callback must advertise and fill ALL credential types libvirt may
+    request for digest-md5 / scram-sha-256 / cram-md5: AUTHNAME (the SASL
+    authentication name — 'enter your authentication name' in virsh) and
+    PASSWORD/PASSPHRASE, plus USERNAME and REALM. Leaving any requested type
+    unfilled makes sasl_client_step fail with SASL_FAIL ('generic failure').
     """
     uri = hcfg.connection_uri
     if hcfg.auth_type == "sasl":
@@ -84,19 +90,31 @@ def _open_conn(hcfg):
         CRED_USERNAME = getattr(libvirt, "VIR_CRED_USERNAME", 1)
         CRED_PASSWORD = getattr(libvirt, "VIR_CRED_PASSWORD", 3)
         CRED_PASSPHRASE = getattr(libvirt, "VIR_CRED_PASSPHRASE", 4)
+        CRED_REALM = getattr(libvirt, "VIR_CRED_REALM", 7)
+        CRED_AUTHNAME = getattr(libvirt, "VIR_CRED_AUTHNAME", 8)
         username = hcfg.username
         password = hcfg.password
 
         def _cb(creds, _userdata):
             for c in creds:
-                # each cred: [type, prompt, challenge, default_result, result]
-                if c[0] == CRED_USERNAME:
-                    c[4] = username
-                elif c[0] in (CRED_PASSWORD, CRED_PASSPHRASE):
-                    c[4] = password
+                t = c[0]
+                if t in (CRED_USERNAME, CRED_AUTHNAME):
+                    val = username
+                elif t in (CRED_PASSWORD, CRED_PASSPHRASE):
+                    val = password
+                elif t == CRED_REALM:
+                    # use the server-provided default realm if any, else empty
+                    val = (c[3] if len(c) > 3 and c[3] else "")
+                else:
+                    continue
+                c[4] = val  # result string (libvirt-python sets resultlen = len)
             return 0
 
-        auth = [[CRED_USERNAME, CRED_PASSWORD, CRED_PASSPHRASE], _cb, None]
+        auth = [
+            [CRED_USERNAME, CRED_AUTHNAME, CRED_PASSWORD, CRED_PASSPHRASE, CRED_REALM],
+            _cb,
+            None,
+        ]
         return libvirt.openAuth(uri, auth, 0)
     # ssh_key or none
     return libvirt.open(uri)

@@ -66,6 +66,16 @@ oidc_groups_claim = groups                        ; parsed from the ID token / u
 [hosts]
 node01 = qemu+ssh://root@node01/system
 node02 = qemu+ssh://root@node02/system
+
+# VNC console connection mode:
+#   ssh (default) — per-session SSH tunnel to the host (NAT/firewall between
+#                   Webvirt and the KVM hosts).
+#   direct        — connect straight to <host>:<vnc port>, no SSH tunnel. Use
+#                   when Webvirt is on the same LAN as the KVM hosts. REQUIRES
+#                   the VM's VNC to listen on a reachable address
+#                   (0.0.0.0 or a host LAN IP), not 127.0.0.1.
+[vnc]
+mode = ssh
 ```
 
 ### OIDC behaviour

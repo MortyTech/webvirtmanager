@@ -108,35 +108,59 @@ def _spawn_tunnel(ssh_target: str, vnc_port: int, listen: str) -> tuple[Optional
     )
 
 
-def _probe_vnc(local_port: int, timeout: float = 5.0) -> None:
-    """Verify the tunneled port actually speaks RFB (a real VNC server is there).
+def _probe_vnc_host(target_host: str, target_port: int, timeout: float = 5.0) -> None:
+    """Verify the target actually speaks RFB (a real VNC server is there).
 
-    Uses a throwaway connection — VNC servers accept multiple concurrent
-    clients, so the noVNC session later opens its own fresh connection and the
-    server sends the RFB greeting again."""
+    Works for both the local SSH-tunnel port (127.0.0.1:<local>) in ssh mode and
+    a direct <host>:<port> in direct mode. Uses a throwaway connection — VNC
+    servers accept multiple concurrent clients, so the noVNC session later opens
+    its own fresh connection and the server sends the RFB greeting again."""
     deadline = time.time() + timeout
     last = ""
     while time.time() < deadline:
         try:
-            s = socket.create_connection(("127.0.0.1", local_port), timeout=2)
+            s = socket.create_connection((target_host, target_port), timeout=2)
             try:
                 s.settimeout(2)
                 greeting = s.recv(13)
             finally:
                 s.close()
             if greeting.startswith(b"RFB "):
-                print(f"[vnc] probe ok on local port {local_port}: {greeting!r}", flush=True)
+                print(f"[vnc] probe ok at {target_host}:{target_port}: {greeting!r}", flush=True)
                 return
             last = f"unexpected greeting {greeting!r}"
         except Exception as e:
             last = str(e)
             time.sleep(0.2)
     raise RuntimeError(
-        f"VNC server did not answer RFB handshake on local tunnel port {local_port}: {last}"
+        f"VNC server did not answer RFB handshake at {target_host}:{target_port}: {last}"
     )
 
 
+def _direct_target_host(uri: str, listen: str) -> str:
+    """Resolve the host to connect to in direct mode (no SSH tunnel).
+
+    Uses the VNC `listen` address from the live XML — unless it's wildcard
+    (0.0.0.0/::/*, meaning the VNC is bound on all the host's interfaces), in
+    which case we fall back to the hypervisor hostname from the qemu+ssh URI.
+    A localhost bind (127.0.0.1) is rejected: the container can't reach the
+    host's loopback, so direct mode won't work — the user must use ssh mode or
+    reconfigure the VM's VNC to listen on a reachable address.
+    """
+    if listen in ("127.0.0.1", "::1", "localhost"):
+        raise RuntimeError(
+            "VNC is bound to localhost (127.0.0.1); direct mode can't reach it "
+            "from the container. Use vnc.mode = ssh, or reconfigure the VM's "
+            "<graphics listen=...> to 0.0.0.0 or a host LAN IP."
+        )
+    if listen in ("0.0.0.0", "::", "*", ""):
+        return urlparse(uri).hostname or "localhost"
+    return listen
+
+
 def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
+    from .config import get_config
+
     info = vm_vnc_info(host, vm)
     if not info.get("port"):
         raise RuntimeError(
@@ -145,41 +169,71 @@ def create_vnc_session(host: str, vm: str, owner_sid: str, uri: str) -> dict:
         )
     if info.get("state") not in ("running",):
         raise RuntimeError(f"VM is {info.get('state')}, cannot open VNC")
-    ssh_target = _ssh_target(uri)
-    proc, local_port = _spawn_tunnel(
-        ssh_target, int(info["port"]), info.get("listen", "127.0.0.1")
-    )
-    # Verify end-to-end that the tunnel reaches a real VNC server BEFORE handing
-    # out a token. If this fails, the POST returns a clear reason instead of the
-    # frontend showing a generic "VNC session disconnected".
-    try:
-        _probe_vnc(local_port)
-    except Exception as e:
+    vnc_port = int(info["port"])
+    listen = info.get("listen", "127.0.0.1")
+    mode = (get_config().vnc.mode or "ssh").lower()
+    if mode not in ("ssh", "direct"):
+        mode = "ssh"
+
+    ssh_proc = None
+    if mode == "direct":
+        # Connect straight to the VNC port — no SSH tunnel. Only viable when
+        # the container is on the same network as the KVM host and the VNC is
+        # bound to a reachable address.
+        target_host = _direct_target_host(uri, listen)
+        target_port = vnc_port
         try:
-            proc.terminate()
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"VNC unreachable on {host} (vnc_port={info['port']}, "
-            f"listen={info.get('listen')}): {e}"
-        )
+            _probe_vnc_host(target_host, target_port)
+        except Exception as e:
+            raise RuntimeError(
+                f"VNC unreachable directly at {target_host}:{target_port} "
+                f"(direct mode, listen={listen}): {e}. Ensure the VM's VNC is "
+                f"bound to a reachable address (not 127.0.0.1) and the container "
+                f"can route to the host, or set [vnc] mode = ssh."
+            )
+    else:
+        # ssh mode (default): per-session SSH tunnel to the host.
+        ssh_target = _ssh_target(uri)
+        proc, local_port = _spawn_tunnel(ssh_target, vnc_port, listen)
+        try:
+            _probe_vnc_host("127.0.0.1", local_port)
+        except Exception as e:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"VNC unreachable on {host} (vnc_port={vnc_port}, "
+                f"listen={listen}): {e}"
+            )
+        ssh_proc = proc
+        target_host = "127.0.0.1"
+        target_port = local_port
+
     token = secrets.token_urlsafe(32)
     with _lock:
         _sessions[token] = {
             "host": host,
             "vm": vm,
-            "local_port": local_port,
-            "ssh_proc": proc,
+            "target_host": target_host,
+            "target_port": target_port,
+            "ssh_proc": ssh_proc,  # None in direct mode
+            "mode": mode,
             "created_at": time.time(),
             "last_seen": time.time(),
             "owner_sid": owner_sid,
         }
     print(
-        f"[vnc] session created: host={host} vm={vm} vnc_port={info['port']} "
-        f"listen={info.get('listen')} local_port={local_port}",
+        f"[vnc] session created: host={host} vm={vm} mode={mode} "
+        f"target={target_host}:{target_port} vnc_port={vnc_port} listen={listen}",
         flush=True,
     )
-    return {"token": token, "path": f"/vnc/ws/{token}", "vnc_port": info["port"]}
+    return {
+        "token": token,
+        "path": f"/vnc/ws/{token}",
+        "vnc_port": vnc_port,
+        "mode": mode,
+    }
 
 
 def _destroy_session(token: str) -> None:
@@ -295,26 +349,31 @@ async def vnc_ws(websocket: WebSocket, token: str):
             if session is not None and entry["owner_sid"] != session.sid and get_config().oidc.enabled:
                 # token bound to another user
                 entry = None
-        if not entry or entry["ssh_proc"].poll() is not None:
+        # In direct mode there's no ssh_proc; only check it in ssh mode.
+        ssh_proc = entry.get("ssh_proc") if entry else None
+        if not entry or (ssh_proc is not None and ssh_proc.poll() is not None):
             await websocket.accept()
             await websocket.close(code=4404)
             return
         entry["last_seen"] = time.time()
-        local_port = entry["local_port"]
+        target_host = entry["target_host"]
+        target_port = entry["target_port"]
+        mode = entry.get("mode", "ssh")
 
-    # 3. accept WS and open TCP to the local SSH tunnel
-    print(f"[vnc] ws connect -> 127.0.0.1:{local_port}", flush=True)
+    # 3. accept WS and open TCP to the target (local SSH tunnel port in ssh
+    #    mode, or the host's VNC port directly in direct mode)
+    print(f"[vnc] ws connect ({mode}) -> {target_host}:{target_port}", flush=True)
     await websocket.accept()
     try:
-        reader, writer = await asyncio.open_connection("127.0.0.1", local_port)
+        reader, writer = await asyncio.open_connection(target_host, target_port)
     except Exception as e:
-        print(f"[vnc] tcp connect to 127.0.0.1:{local_port} failed: {e}", flush=True)
+        print(f"[vnc] tcp connect to {target_host}:{target_port} failed: {e}", flush=True)
         await websocket.close(code=1011)
         return
 
     try:
         await _pump(websocket, reader, writer)
     finally:
-        print(f"[vnc] ws session ended (local_port={local_port})", flush=True)
+        print(f"[vnc] ws session ended ({target_host}:{target_port})", flush=True)
         # keep the session alive for quick reconnects; reaper will clean up.
         pass

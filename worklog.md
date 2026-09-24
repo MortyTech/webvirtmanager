@@ -172,3 +172,21 @@ Work Log:
 Stage Summary:
 - Stop button replaces Hard Power Off (Square icon, "Stop (force power off)" tooltip).
 - New "Edit XML" button opens a CodeMirror editor (XML highlight + line numbers) backed by virDomainGetXMLDesc(INACTIVE|SECURE) / virDomainDefineXML — behaves like virsh edit: invalid or libvirt-rejected XML is NOT saved, the editor stays open with the error and the user's text. Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-8
+Agent: main (Z.ai Code)
+Task: Add [vnc] mode = ssh|direct config — direct mode connects the WS-to-VNC proxy straight to the host's VNC port (no SSH tunnel); ssh stays the default.
+
+Work Log:
+- config.py: added VncConfig(mode="ssh" default, is_direct property) + Config.vnc; parse [vnc] section's `mode` (validates to ssh/direct, invalid -> ssh default).
+- vnc_proxy.py:
+  * Generalized _probe_vnc -> _probe_vnc_host(target_host, target_port) (works for 127.0.0.1:local in ssh mode and <host>:<port> in direct mode).
+  * Added _direct_target_host(uri, listen): uses the VNC `listen` address from the live XML; wildcard (0.0.0.0/::/*) -> hypervisor hostname from the URI; 127.0.0.1/::1/localhost -> raises a clear error (container can't reach the host's loopback in direct mode).
+  * Refactored create_vnc_session to branch on get_config().vnc.mode: direct -> no SSH tunnel, target=<resolved host>:<vnc port>, probe it; ssh (default) -> spawn tunnel, target=127.0.0.1:<local>, probe it. Unified session dict now stores target_host/target_port/ssh_proc(None in direct)/mode. POST returns {token, path, vnc_port, mode}.
+  * WS endpoint: connects to entry["target_host"]:entry["target_port"] (works for both modes); only checks ssh_proc.poll() when ssh_proc is not None (direct mode has no proc). Logs include mode + target.
+- config.ini.example + README: documented [vnc] mode = ssh|direct with the reachable-bind requirement for direct mode.
+- Verified: backend imports OK, config parses direct/ssh/invalid correctly, _direct_target_host resolves 172.16.21.13->itself / 0.0.0.0->turin3 / 127.0.0.1->raises, backend boots (healthz 200), Next.js lint clean.
+
+Stage Summary:
+- [vnc] mode = ssh (default, unchanged behavior) | direct (no SSH tunnel; container must reach the VNC port directly; VNC must be bound to a reachable address). Rebuild: `docker compose build && docker compose up -d --force-recreate`. Reload live via POST /api/config/reload (no restart) to switch modes.

@@ -53,8 +53,18 @@ class OidcConfig:
 
 
 @dataclass
+class VncConfig:
+    mode: str = "ssh"  # "ssh" (default) | "direct"
+
+    @property
+    def is_direct(self) -> bool:
+        return self.mode.strip().lower() == "direct"
+
+
+@dataclass
 class Config:
     oidc: OidcConfig = field(default_factory=OidcConfig)
+    vnc: VncConfig = field(default_factory=VncConfig)
     hosts: Dict[str, str] = field(default_factory=dict)  # name -> qemu+ssh:// uri
     loaded_at: float = 0.0
     path: str = ""
@@ -118,6 +128,16 @@ def _parse_ini(path: str) -> Config:
             oidc.client_secret = ""
 
     cfg.oidc = oidc
+
+    # [vnc] — how the WebSocket-to-VNC proxy reaches the VM's VNC port.
+    #   ssh     (default): per-session `ssh -N -L` tunnel to the host (NAT/firewall)
+    #   direct:           connect straight to <vnc host>:<port> (same-LAN deployments)
+    vnc = VncConfig()
+    if parser.has_section("vnc"):
+        vnc.mode = parser.get("vnc", "mode", fallback="ssh").strip().lower()
+        if vnc.mode not in ("ssh", "direct"):
+            vnc.mode = "ssh"
+    cfg.vnc = vnc
 
     if parser.has_section("hosts"):
         for name, val in parser.items("hosts"):

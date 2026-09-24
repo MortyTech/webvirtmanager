@@ -56,3 +56,25 @@ oidc_groups_claim = groups
 node01 = qemu+ssh://root@node01/system
 node02 = qemu+ssh://root@node02/system
 node03 = qemu+ssh://root@node03/system
+
+# ---------------------------------------------------------------------------
+# VNC console connection mode
+#
+# Controls how the WebSocket-to-VNC proxy reaches each VM's VNC port.
+#
+#   ssh      (default) — establish a per-session `ssh -N -L` tunnel to the
+#                         hypervisor and bridge the VNC through it. Best when
+#                         the Webvirt container is NOT on the same network as
+#                         the KVM hosts (NAT / firewall between them).
+#
+#   direct            — connect straight to <vnc host>:<port> with no SSH
+#                         tunnel. Use this when Webvirt runs on the same LAN
+#                         as the KVM hosts (e.g. a container on the same
+#                         subnet) so the SSH tunnel is pure overhead.
+#                         REQUIRES the VM's VNC to be bound to a reachable
+#                         address (0.0.0.0 or a host LAN IP), NOT 127.0.0.1 —
+#                         the container cannot reach the host's loopback.
+# ---------------------------------------------------------------------------
+[vnc]
+mode = ssh
+

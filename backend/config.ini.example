@@ -15,7 +15,7 @@
 # and the dashboard is served unauthenticated. No logout button is shown.
 enabled = true
 
-issuer = https://keycloak.tunoo.de/realms/tunoo
+issuer = https://keycloak.example.com/realms/example
 client_id = my-client-id
 
 # Omit this line entirely for public (PKCE) clients. For confidential clients
@@ -30,12 +30,12 @@ client_type = confidential
 # Used verbatim as the redirect_uri in the auth request and as the path of the
 # callback route. Never derived from the Host header — must match what the IdP
 # has registered, byte-for-byte.
-redirect_url = https://adc.tunoo.de/oauth2/callback
+redirect_url = https://adc.example.com/oauth2/callback
 
 # Fallback end-session endpoint used only if the discovery document does not
 # expose an end_session_endpoint. RP-initiated logout passes id_token_hint and
 # post_logout_redirect_uri (derived from redirect_url's origin).
-backend_logout_url = https://keycloak.tunoo.de/realms/tunoo/protocol/openid-connect/logout
+backend_logout_url = https://keycloak.example.com/realms/example/protocol/openid-connect/logout
 
 # Scope sent in the authorization request. Read from config, never hardcoded.
 scope = "openid profile email"

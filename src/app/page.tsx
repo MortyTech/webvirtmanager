@@ -52,7 +52,7 @@ export default function Page() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  <div className="text-sm">tunoo@example.com</div>
+                  <div className="text-sm">example@example.com</div>
                   <div className="text-[11px] text-muted-foreground font-normal mt-0.5">groups: admins, virt-ops</div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

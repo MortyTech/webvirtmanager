@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# sandbox gateway config (this dev environment only; not part of the Webvirt app)
+Caddyfile
+
 
 # typescript
 *.tsbuildinfo

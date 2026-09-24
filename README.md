@@ -54,12 +54,12 @@ See [`backend/config.ini.example`](backend/config.ini.example). Key points:
 ```ini
 [oidc]
 enabled = true                                   ; secure-by-default; false = no auth (trusted nets only)
-issuer = https://keycloak.tunoo.de/realms/tunoo
+issuer = https://keycloak.example.com/realms/example
 client_id = my-client-id
 client_secret = my-client-secret                 ; OMIT entirely for public (PKCE) clients
 client_type = confidential                         ; or "public"
-redirect_url = https://adc.tunoo.de/oauth2/callback ; used verbatim — never derived from the Host header
-backend_logout_url = https://keycloak.tunoo.de/realms/tunoo/protocol/openid-connect/logout
+redirect_url = https://adc.example.com/oauth2/callback ; used verbatim — never derived from the Host header
+backend_logout_url = https://keycloak.example.com/realms/example/protocol/openid-connect/logout
 scope = "openid profile email"                    ; read from config, never hardcoded
 oidc_groups_claim = groups                        ; parsed from the ID token / userinfo
 
@@ -131,12 +131,46 @@ cp backend/config.ini.example ./config.ini   # then edit OIDC + hosts
 SSH_DIR=~/.ssh docker compose up -d          # builds + runs on :8000
 ```
 
+### Session secret (`SESSION_SECRET`) — important
+
+`SESSION_SECRET` is the HMAC key used to sign the **session cookie** that holds
+each logged-in user's OIDC tokens. **Set it explicitly** so sessions survive a
+container restart; otherwise a **random one is generated at each process start**,
+which means every restart/redeploy logs everyone out (they have to re-authenticate
+through the IdP). The app still works without it, but it's not recommended for
+anything beyond a quick local test.
+
+Generate a strong value and pass it in:
+
+```bash
+# plain docker
+docker run -d --name webvirt -p 8000:8000 \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -v "$(pwd)/config.ini:/app/config.ini:ro" \
+  -v "$HOME/.ssh:/root/.ssh:ro" webvirt
+
+# docker compose (add to the `environment:` list, or export first)
+export SESSION_SECRET="$(openssl rand -hex 32)"
+SESSION_SECRET=$SESSION_SECRET docker compose up -d
+```
+
+```yaml
+# or, in docker-compose.yml:
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET}
+```
+
+> Note: the container runs a single uvicorn worker, so an in-memory fallback is
+> safe, but a stable `SESSION_SECRET` is still the right call — it keeps users
+> logged in across restarts and is required if you ever scale to >1 worker.
+
 ### With plain `docker`
 
 ```bash
 docker build -t webvirt .
 docker run -d --name webvirt \
   -p 8000:8000 \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
   -v "$(pwd)/config.ini:/app/config.ini:ro" \
   -v "$HOME/.ssh:/root/.ssh:ro" \
   webvirt

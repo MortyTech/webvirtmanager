@@ -253,3 +253,17 @@ Work Log:
 
 Stage Summary:
 - New Export XML button beside Edit XML in every VM row downloads the domain's live XML as <vmname>.xml (= virsh dumpxml, passwords masked). Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-12
+Agent: main (Z.ai Code)
+Task: Add Caddyfile to .gitignore; document SESSION_SECRET in README; remove every "tunoo"/"tunoo.de" string (replace with example/example.com).
+
+Work Log:
+- .gitignore: added `Caddyfile` (sandbox-only gateway config, not part of Webvirt) under a clearly-labeled section.
+- README.md: added a "Session secret (SESSION_SECRET) — important" subsection explaining it signs the session cookie holding OIDC tokens, that a RANDOM one is generated at process start if unset (so restarts log everyone out), and how to set it via -e / docker-compose environment (openssl rand -hex 32). Plain-docker run command updated to include -e SESSION_SECRET.
+- Removed all "tunoo"/"tunoo.de" from 4 files (backend/config.ini.example, README.md, src/components/showcase/info-views.tsx, src/app/page.tsx): keycloak.tunoo.de -> keycloak.example.com, adc.tunoo.de -> adc.example.com, /realms/tunoo -> /realms/example, tunoo@example.com -> example@example.com. Final Grep for "tunoo" across the project: no matches.
+- Verified: `bun run lint` clean; dev server compiles.
+
+Stage Summary:
+- Caddyfile is now gitignored. README documents SESSION_SECRET and the random-on-start fallback. No "tunoo" string remains anywhere in source.

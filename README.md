@@ -17,12 +17,6 @@ A containerized web app that does what `virt-manager` does, but in the browser:
 
 ---
 
-## Screenshots
-![Dark Mode](darkmode.jpeg)
-![Light Mode](lightmode.jpeg)
-
----
-
 ## Features (exactly what's implemented)
 
 - Host list with reachability status (probed via libvirt `openReadOnly`).
@@ -34,6 +28,12 @@ A containerized web app that does what `virt-manager` does, but in the browser:
   Cumulative counters are returned by the server; **rates are computed
   client-side**, and **the frontend alone controls the polling cadence**
   (minimum 10 s, default 30 s, no server-side scheduler).
+
+---
+
+## Screenshots
+![Dark Mode](darkmode.jpeg)
+![Light Mode](lightmode.jpeg)
 
 ---
 

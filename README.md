@@ -110,22 +110,27 @@ addresses of **your** Webvirt instance and **your** IdP.
   registered on the IdP client. Use whatever scheme/host/port your deployment
   actually exposes:
 
-  - Webvirt running directly (no reverse proxy), reached by IP+port:
+  - Webvirt running directly (no reverse proxy), reached by your host's IP+port
+    (replace `192.168.1.1` with **your own** host IP/FQDN):
     ```
-    redirect_url = http://172.16.21.11:8000/oauth2/callback
+    redirect_url = http://192.168.1.1:8000/oauth2/callback
     ```
-  - Webvirt behind a reverse proxy / FQDN with TLS:
+  - Webvirt behind a reverse proxy / FQDN with TLS
+    (replace `webvirt.example.com` with **your own** FQDN):
     ```
     redirect_url = https://webvirt.example.com/oauth2/callback
     ```
 
   Notes:
+  - **The host / IP / FQDN must be your own** — `192.168.1.1` and
+    `webvirt.example.com` above are just placeholders. Use whatever address
+    your users actually type to reach Webvirt.
   - `http://` vs `https://` matters — it must match how the IdP will call you
     back (use `https://` when behind a TLS-terminating reverse proxy; `http://`
     for a direct, no-TLS deployment like the IP example above).
   - The host:port is your **public** address, not the container's internal one.
-    E.g. `docker run -p 8000:8000` reached on the host IP `172.16.21.11` →
-    `http://172.16.21.11:8000/oauth2/callback`.
+    E.g. `docker run -p 8000:8000` reached on your host IP (e.g. `192.168.1.1`) →
+    `http://192.168.1.1:8000/oauth2/callback`.
   - The path is always `/oauth2/callback` (the backend callback route).
 
 - **`backend_logout_url`** — the IdP's RP-initiated-logout endpoint. It's a

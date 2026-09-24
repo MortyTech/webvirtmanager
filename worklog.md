@@ -280,3 +280,16 @@ Work Log:
 
 Stage Summary:
 - README now explains redirect_url/backend_logout_url with the user's IP-based example; example host renamed adc -> webvirt everywhere. No code/build changes needed (docs + showcase text only).
+
+---
+Task ID: bugfix-14
+Agent: main (Z.ai Code)
+Task: Add worklog.md to .gitignore + .dockerignore; replace the user's real IP (172.16.21.11) in README with a generic example and make clear it's a placeholder.
+
+Work Log:
+- .gitignore: added `worklog.md` (already present in .dockerignore).
+- README.md: replaced the user's real IP 172.16.21.11 -> 192.168.1.1 (generic RFC1918 placeholder) in the redirect_url example. Reworded both examples to state explicitly "replace 192.168.1.1 with YOUR OWN host IP/FQDN" / "replace webvirt.example.com with YOUR OWN FQDN", and added a Notes bullet: "The host / IP / FQDN must be your own — 192.168.1.1 and webvirt.example.com above are just placeholders."
+- Verified: no 172.16.21.* remains in committed source (README/config.example/src); worklog.md in both .gitignore and .dockerignore; lint clean. (Historical worklog entries retain the real IP but worklog.md is now ignored — not committed, not in the image.)
+
+Stage Summary:
+- worklog.md is ignored by both git and docker. README's redirect_url example uses 192.168.1.1 (placeholder) and clearly tells the user to replace it with their own IP/FQDN.

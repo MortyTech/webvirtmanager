@@ -39,6 +39,9 @@ yarn-error.log*
 # sandbox gateway config (this dev environment only; not part of the Webvirt app)
 Caddyfile
 
+# internal agent worklog (not part of the project)
+worklog.md
+
 
 # typescript
 *.tsbuildinfo

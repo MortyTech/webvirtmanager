@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MonitorPlay, RefreshCw, ShieldCheck, Server } from "lucide-react";
 import { HostSidebar } from "@/components/HostSidebar";
 import { VmTable } from "@/components/VmTable";
 import { VmStatsSheet } from "@/components/VmStatsSheet";
 import { VncConsole } from "@/components/VncConsole";
 import { XmlEditor } from "@/components/XmlEditor";
+import { DefineVmDialog } from "@/components/DefineVmDialog";
 import { UserMenu } from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ export default function App() {
   const [vncOpen, setVncOpen] = useState(false);
   const [xmlVm, setXmlVm] = useState<VmInfo | null>(null);
   const [xmlOpen, setXmlOpen] = useState(false);
+  const [defineOpen, setDefineOpen] = useState(false);
 
   // ---- bootstrap: /api/me --------------------------------------------------
   useEffect(() => {
@@ -61,39 +63,32 @@ export default function App() {
   }, [hostsPoll.data, selectedHost]);
 
   // ---- VM list for selected host ------------------------------------------
+  const refreshVmList = useCallback(async () => {
+    if (!selectedHost) {
+      setVmList([]);
+      return;
+    }
+    setVmLoading(true);
+    try {
+      const r = await api.vms(selectedHost);
+      setVmList(r.vms);
+    } catch (e) {
+      setVmList([]);
+      toast({ title: "Failed to load VMs", description: e instanceof Error ? e.message : String(e), variant: "error" });
+    } finally {
+      setVmLoading(false);
+    }
+  }, [selectedHost]);
+
   useEffect(() => {
     if (!selectedHost) {
       setVmList([]);
       return;
     }
-    let cancelled = false;
-    setVmLoading(true);
-    (async () => {
-      try {
-        const r = await api.vms(selectedHost);
-        if (!cancelled) setVmList(r.vms);
-      } catch (e) {
-        if (!cancelled) {
-          setVmList([]);
-          toast({ title: "Failed to load VMs", description: e instanceof Error ? e.message : String(e), variant: "error" });
-        }
-      } finally {
-        if (!cancelled) setVmLoading(false);
-      }
-    })();
-    const id = setInterval(async () => {
-      try {
-        const r = await api.vms(selectedHost);
-        if (!cancelled) setVmList(r.vms);
-      } catch {
-        /* keep stale */
-      }
-    }, 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [selectedHost]);
+    refreshVmList();
+    const id = setInterval(refreshVmList, 15_000);
+    return () => clearInterval(id);
+  }, [selectedHost, refreshVmList]);
 
   // ---- actions ------------------------------------------------------------
   async function handleAction(vm: VmInfo, action: string) {
@@ -193,6 +188,7 @@ export default function App() {
               setXmlVm(vm);
               setXmlOpen(true);
             }}
+            onImportXml={() => setDefineOpen(true)}
             busyKey={busyKey}
           />
         </div>
@@ -211,6 +207,7 @@ export default function App() {
       <VmStatsSheet host={selectedHost} vm={statsVm} open={statsOpen} onOpenChange={setStatsOpen} />
       <VncConsole host={selectedHost} vm={vncVm} open={vncOpen} onOpenChange={setVncOpen} />
       <XmlEditor host={selectedHost} vm={xmlVm} open={xmlOpen} onOpenChange={setXmlOpen} />
+      <DefineVmDialog host={selectedHost} open={defineOpen} onOpenChange={setDefineOpen} onDefined={refreshVmList} />
       <Toaster />
     </div>
   );

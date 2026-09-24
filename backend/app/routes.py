@@ -206,6 +206,33 @@ async def vm_save_xml(host: str, vm: str, payload: dict = Body(...)):
     return result
 
 
+@router.post("/hosts/{host}/define-xml")
+async def define_vm_from_xml(host: str, payload: dict = Body(...)):
+    """Define a NEW domain from pasted/uploaded XML (virsh define equivalent).
+
+    Mirrors `virsh define file.xml`: malformed XML or a libvirt rejection returns
+    400 with the error so the dialog stays open with the user's text intact.
+    """
+    xml = (payload or {}).get("xml", "")
+    if not xml.strip():
+        raise HTTPException(400, detail="empty xml")
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, lv.define_domain_xml, host, xml
+        )
+    except lv.HostNotFound:
+        raise HTTPException(404, detail=f"unknown host: {host}")
+    except lv.HostUnreachable as e:
+        raise HTTPException(502, detail=str(e))
+    except lv.LibvirtUnavailable as e:
+        raise HTTPException(503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))  # XML parse error
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))  # libvirt rejection
+    return result
+
+
 @router.post("/config/reload")
 async def reload_cfg():
     new = reload_config()

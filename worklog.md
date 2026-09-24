@@ -190,3 +190,22 @@ Work Log:
 
 Stage Summary:
 - [vnc] mode = ssh (default, unchanged behavior) | direct (no SSH tunnel; container must reach the VNC port directly; VNC must be bound to a reachable address). Rebuild: `docker compose build && docker compose up -d --force-recreate`. Reload live via POST /api/config/reload (no restart) to switch modes.
+
+---
+Task ID: bugfix-9
+Agent: main (Z.ai Code)
+Task: Add "Define VM from XML" feature (virsh define equivalent) — paste or upload a <domain> XML, validate, define on the host, show confirmation.
+
+Work Log:
+- Backend:
+  * libvirt_api.py: define_domain_xml(host, xml) — ET.fromstring well-formedness check, then conn.defineXML(xml); returns {ok, name, uuid}. Malformed XML -> ValueError; libvirt rejection -> RuntimeError.
+  * routes.py: POST /api/hosts/{host}/define-xml (Body {xml}) — mirrors virsh define: parse error or libvirt rejection -> 400 with detail so the dialog stays open; success -> {ok, name, uuid}.
+- Frontend:
+  * api.ts: defineXml(host, xml).
+  * DefineVmDialog.tsx: large dialog (96vw/88vh) with CodeMirror (XML syntax highlighting, line numbers, fold gutter, placeholder). Three ways to provide XML: paste in the editor, "Upload file" (native file input accept .xml), drag-and-drop a .xml onto the editor area. "Template" button inserts a minimal <domain> stub. Define flow: client-side DOMParser well-formedness check first (never sends broken XML); then POST defineXml; on success -> toast "VM '<name>' defined successfully on host '<host>'" + onDefined() (refresh VM list) + close; on error -> red banner with the libvirt message, editor stays open with the user's text.
+  * VmTable.tsx: added "Import XML" outline button (FileUp icon, tooltip "Define a new VM from XML (virsh define)") in the host card header, shown only when the host is reachable. New onImportXml prop.
+  * App.tsx: extracted refreshVmList useCallback (used by the VM-list effect + as onDefined after a define), added defineOpen state, passed onImportXml, rendered <DefineVmDialog host open onOpenChange onDefined=refreshVmList>.
+- Verified: backend imports OK + define-xml route registered, frontend `bun run build` passes, Next.js lint clean.
+
+Stage Summary:
+- New "Import XML" button in the VM table header opens a CodeMirror editor with paste/upload/drag-drop. Define runs virDomainDefineXML on the selected host (= virsh define). Invalid or libvirt-rejected XML is NOT defined — the dialog keeps the editor open with the exact libvirt error. On success: toast "VM '<name>' defined successfully on host '<host>'" and the VM list refreshes. Rebuild: `docker compose build && docker compose up -d --force-recreate`.

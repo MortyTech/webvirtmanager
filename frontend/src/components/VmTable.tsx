@@ -3,6 +3,7 @@ import {
   Activity,
   ChevronUp,
   FileCode,
+  FileUp,
   MonitorPlay,
   Play,
   Power,
@@ -48,6 +49,7 @@ export function VmTable({
   onStats,
   onConsole,
   onEditXml,
+  onImportXml,
   busyKey,
 }: {
   host: HostStatus | null;
@@ -57,6 +59,7 @@ export function VmTable({
   onStats: (vm: VmInfo) => void;
   onConsole: (vm: VmInfo) => void;
   onEditXml: (vm: VmInfo) => void;
+  onImportXml: () => void;
   busyKey: string | null;
 }) {
   const reachable = host?.reachable;
@@ -113,7 +116,14 @@ export function VmTable({
             {reachable ? host?.hostname : host?.error || "Could not open qemu+ssh connection"}
           </p>
         </div>
-        {loading && <Spinner className="text-muted-foreground" />}
+        <div className="flex items-center gap-2">
+          {reachable && (
+            <Button size="sm" variant="outline" onClick={onImportXml} className="h-7" title="Define a new VM from XML (virsh define)">
+              <FileUp className="h-3.5 w-3.5 mr-1" /> Import XML
+            </Button>
+          )}
+          {loading && <Spinner className="text-muted-foreground" />}
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         {!reachable || sorted.length === 0 ? (

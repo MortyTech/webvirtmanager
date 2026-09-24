@@ -64,6 +64,11 @@ export const api = {
       `/api/hosts/${encodeURIComponent(host)}/vms/${encodeURIComponent(vm)}/xml`,
       { method: "PUT", body: JSON.stringify({ xml }) }
     ),
+  defineXml: (host: string, xml: string) =>
+    req<{ ok: boolean; name?: string; uuid?: string }>(
+      `/api/hosts/${encodeURIComponent(host)}/define-xml`,
+      { method: "POST", body: JSON.stringify({ xml }) }
+    ),
 };
 
 export function redirectToLogin() {

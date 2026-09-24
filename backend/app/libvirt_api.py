@@ -476,3 +476,33 @@ def vm_define_xml(host: str, vm: str, xml: str) -> Dict[str, Any]:
         pass
     return {"ok": True, "name": name or vm}
 
+
+def define_domain_xml(host: str, xml: str) -> Dict[str, Any]:
+    """Define a NEW domain from XML (virsh define equivalent).
+
+    Accepts a full <domain> XML document, validates well-formedness, then calls
+    virDomainDefineXML on the host's connection. Mirrors `virsh define file.xml`:
+    malformed XML or a libvirt rejection raises with the libvirt error so the
+    dialog can show it and keep the user's text.
+    """
+    try:
+        ET.fromstring(xml)
+    except ET.ParseError as e:
+        raise ValueError(f"XML parse error: {e}")
+    conn, lock = _get_conn(host)
+    with lock:
+        try:
+            newdom = conn.defineXML(xml)
+        except Exception as e:
+            raise RuntimeError(str(e)) from e
+    name = uuid = ""
+    try:
+        name = newdom.name()
+    except Exception:
+        pass
+    try:
+        uuid = newdom.UUIDString()
+    except Exception:
+        pass
+    return {"ok": True, "name": name, "uuid": uuid}
+

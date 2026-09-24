@@ -44,6 +44,14 @@ scope = "openid profile email"
 # groups. Stored in the session and exposed at GET /api/me.
 oidc_groups_claim = groups
 
+# Group-based access control: comma-separated list of allowed group names.
+#   - Empty/missing (default): allow ALL authenticated users (backward compatible).
+#   - Non-empty: the user must be in at least one listed group, else login is
+#     denied with a clear "Access denied" page. If the IdP returns NO groups
+#     claim at all, access is DENIED (fail closed). Denied attempts are logged
+#     to the container logs ([auth] DENY user=... groups=... allowed_groups=...).
+allowed_groups = Admins, DevOps, Infrastructure
+
 # ---------------------------------------------------------------------------
 # Trusted-network mode (optional)
 #

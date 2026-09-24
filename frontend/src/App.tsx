@@ -7,6 +7,7 @@ import { VncConsole } from "@/components/VncConsole";
 import { XmlEditor } from "@/components/XmlEditor";
 import { DefineVmDialog } from "@/components/DefineVmDialog";
 import { UserMenu } from "@/components/UserMenu";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Toaster, toast } from "@/components/ui/toast";
@@ -159,6 +160,7 @@ export default function App() {
             <Button variant="outline" size="sm" className="h-8" onClick={() => hostsPoll.refresh()}>
               <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh hosts
             </Button>
+            <ThemeToggle />
             {me?.auth_enabled && <UserMenu me={me} onLogout={handleLogout} />}
           </div>
         </div>

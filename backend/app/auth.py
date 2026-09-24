@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
@@ -252,6 +252,34 @@ def reset_client() -> None:
 
 # ---- routes ----------------------------------------------------------------
 
+def _auth_denied_page(message: str) -> HTMLResponse:
+    """Render a clear, styled 'access denied' page (returned to the browser at
+    /oauth2/callback when group-based access control rejects a login)."""
+    import html as _html
+    safe = _html.escape(message)
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Access denied — Webvirt</title>
+<style>
+  body {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background:#0b0b0c; color:#e5e7eb; margin:0;
+         display:flex; min-height:100vh; align-items:center; justify-content:center; }}
+  .box {{ max-width:540px; margin:24px; padding:32px; border:1px solid #27272a;
+          border-radius:14px; background:#141416; box-shadow:0 10px 40px rgba(0,0,0,.5); }}
+  h1 {{ color:#f87171; font-size:18px; margin:0 0 12px; }}
+  p  {{ color:#a1a1aa; line-height:1.55; margin:0 0 14px; }}
+  a  {{ color:#34d399; text-decoration:none; font-weight:600; }}
+  a:hover {{ text-decoration:underline; }}
+</style></head>
+<body><div class="box">
+  <h1>Access denied</h1>
+  <p>{safe}</p>
+  <p style="margin-top:18px"><a href="/logout">Switch account / log out</a></p>
+</div></body></html>"""
+    return HTMLResponse(status_code=403, content=body)
+
+
 def mount_me_route(app: FastAPI) -> None:
     """Always register /api/me — even when OIDC is disabled, so the frontend
     can detect auth mode and hide the logout button accordingly."""
@@ -317,6 +345,35 @@ def mount_auth_routes(app: FastAPI) -> None:
         groups = client.extract_groups(tokens)
         claims = client.decode_id_token(tokens.id_token) if tokens.id_token else {}
         username = client._username_from_claims(claims)
+
+        # ---- group-based access control ----------------------------------
+        # allowed_groups empty/missing = allow all authenticated users (backward
+        # compatible). When non-empty, the user must be in at least one allowed
+        # group; if the IdP returned no groups claim at all, deny (fail closed).
+        allowed = cfg.oidc.allowed_groups
+        if allowed:
+            if not groups:
+                print(
+                    f"[auth] DENY user={username or '?'} reason=no_groups_claim "
+                    f"groups_claim={cfg.oidc.groups_claim} allowed_groups={allowed}",
+                    flush=True,
+                )
+                return _auth_denied_page(
+                    "Access denied: the identity provider did not return a groups "
+                    f"claim ('{cfg.oidc.groups_claim}'), and group-based access "
+                    "control is enabled. Contact your administrator."
+                )
+            if not (set(groups) & set(allowed)):
+                print(
+                    f"[auth] DENY user={username or '?'} groups={groups} "
+                    f"allowed_groups={allowed}",
+                    flush=True,
+                )
+                return _auth_denied_page(
+                    "Access denied: your account is not in an authorized group. "
+                    f"Allowed: {', '.join(allowed)}."
+                )
+
         session = store.create(username, groups, tokens)
         resp = RedirectResponse("/", status_code=302)
         set_session_cookie(resp, session.sid)

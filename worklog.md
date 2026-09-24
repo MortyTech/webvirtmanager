@@ -209,3 +209,29 @@ Work Log:
 
 Stage Summary:
 - New "Import XML" button in the VM table header opens a CodeMirror editor with paste/upload/drag-drop. Define runs virDomainDefineXML on the selected host (= virsh define). Invalid or libvirt-rejected XML is NOT defined — the dialog keeps the editor open with the exact libvirt error. On success: toast "VM '<name>' defined successfully on host '<host>'" and the VM list refreshes. Rebuild: `docker compose build && docker compose up -d --force-recreate`.
+
+---
+Task ID: bugfix-10
+Agent: main (Z.ai Code)
+Task: Add dark/light theme toggle + OIDC group-based access control (allowed_groups).
+
+Work Log:
+A) OIDC group-based access control (backend):
+- config.py: OidcConfig.allowed_groups (list; [] = allow all). Parse [oidc] allowed_groups as comma-separated.
+- auth.py callback: after extracting groups+username, if allowed_groups is non-empty: deny (fail closed) if the IdP returned NO groups claim; deny if the user's groups don't intersect allowed_groups; else allow. Empty/missing allowed_groups = allow all (backward compatible). Each denied attempt is logged: [auth] DENY user=... groups=... allowed_groups=... (or reason=no_groups_claim) for audit (visible in docker logs).
+- auth.py: _auth_denied_page(msg) returns a styled HTML 403 page ("Access denied" + the reason + a "Switch account / log out" link to /logout). Returned at /oauth2/callback on denial so the user sees a clear message, not raw JSON.
+- Verified the 4 branches: allow-all (empty), allow (intersect), DENY (no match), DENY (no groups claim). config parses 'Admins, DevOps,Infrastructure' -> ['Admins','DevOps','Infrastructure']; missing -> [].
+- Documented allowed_groups in config.ini.example + README.
+
+B) Dark/light theme toggle (frontend):
+- index.html: inline anti-flash script applies the theme class on <html> before React loads (saved manual choice wins; else prefers-color-scheme; default light).
+- hooks/useTheme.ts: theme state ('light'|'dark'); getInitial reads localStorage 'webvirt-theme' else prefers-color-scheme else light. useEffect applies .dark class + persists to localStorage. toggle() adds a transient .theme-anim class for a smooth animated switch.
+- index.css: html/html.dark color-scheme; a scoped .theme-anim transition rule (background-color/border-color/color/fill/stroke 0.18s) active only during the toggle so everyday hover isn't slowed.
+- components/ThemeToggle.tsx: outline icon button (Sun in dark mode, Moon in light) with title/aria-label.
+- App.tsx: rendered <ThemeToggle/> in the header next to "Refresh hosts".
+- The main dashboard (header, sidebar, VM table, stats) follows the theme; the VNC console + XML/Define editors keep their intentional dark chrome (consoles/editors are dark regardless).
+- Verified: backend imports OK, frontend `bun run build` passes, Next.js lint clean.
+
+Stage Summary:
+- Theme: light by default (or OS dark if no manual choice); toggle in header; persists across refresh via localStorage; smooth 180ms transition; no flash (pre-React script).
+- OIDC: [oidc] allowed_groups = A, B, C restricts login to those groups; empty/missing = allow all; no groups claim returned = deny (fail closed); denied attempts logged; clear HTML "Access denied" page. Rebuild: `docker compose build && docker compose up -d --force-recreate`.

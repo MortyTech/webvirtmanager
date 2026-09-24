@@ -63,6 +63,13 @@ backend_logout_url = https://keycloak.tunoo.de/realms/tunoo/protocol/openid-conn
 scope = "openid profile email"                    ; read from config, never hardcoded
 oidc_groups_claim = groups                        ; parsed from the ID token / userinfo
 
+# Group-based access control (optional). Comma-separated group names.
+#   empty/missing = allow all authenticated users (default, backward compatible)
+#   non-empty     = user must be in at least one listed group; if the IdP
+#                   returns NO groups claim at all, login is DENIED (fail closed)
+# Denied attempts are logged: [auth] DENY user=... groups=... allowed_groups=...
+allowed_groups = Admins, DevOps, Infrastructure
+
 [hosts]
 node01 = qemu+ssh://root@node01/system
 node02 = qemu+ssh://root@node02/system

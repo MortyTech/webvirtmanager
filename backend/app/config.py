@@ -46,6 +46,7 @@ class OidcConfig:
     backend_logout_url: str = ""
     scope: str = "openid profile email"
     groups_claim: str = "groups"
+    allowed_groups: list = field(default_factory=list)  # [] = allow all (backward compatible)
 
     @property
     def is_public(self) -> bool:
@@ -123,6 +124,12 @@ def _parse_ini(path: str) -> Config:
         oidc.backend_logout_url = parser.get("oidc", "backend_logout_url", fallback="").strip()
         oidc.scope = _strip_quotes(parser.get("oidc", "scope", fallback="openid profile email"))
         oidc.groups_claim = parser.get("oidc", "oidc_groups_claim", fallback="groups").strip()
+        # Group-based access control: comma-separated group names. Empty/missing
+        # = allow all authenticated users (backward compatible). Non-empty =
+        # require at least one matching group; if the IdP returns no groups
+        # claim at all, access is denied (fail closed).
+        _ag = parser.get("oidc", "allowed_groups", fallback="")
+        oidc.allowed_groups = [g.strip() for g in _ag.split(",") if g.strip()]
 
         if oidc.is_public:
             oidc.client_secret = ""

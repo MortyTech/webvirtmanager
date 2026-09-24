@@ -6,8 +6,27 @@
     <meta name="color-scheme" content="light dark" />
     <title>Webvirt — web virt-manager</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='14' x='2' y='3' rx='2'/%3E%3Cline x1='8' x2='16' y1='21' y2='21'/%3E%3Cline x1='12' x2='12' y1='17' y2='21'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-D5B0mz7-.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-D0tShoHe.css">
+    <script>
+      // Apply theme before React loads to avoid a flash of the wrong theme.
+      // Rule: a saved manual choice wins; otherwise respect prefers-color-scheme
+      // (defaulting to light).
+      (function () {
+        try {
+          var k = "webvirt-theme";
+          var t = localStorage.getItem(k);
+          if (t !== "light" && t !== "dark") {
+            t = (window.matchMedia &&
+                 window.matchMedia("(prefers-color-scheme: dark)").matches)
+              ? "dark" : "light";
+          }
+          var el = document.documentElement;
+          if (t === "dark") el.classList.add("dark");
+          el.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-7-CBroaL.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BfEbpCy-.css">
   </head>
   <body class="h-full">
     <div id="root" class="h-full"></div>

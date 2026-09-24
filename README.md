@@ -31,12 +31,9 @@ A containerized web app that does what `virt-manager` does, but in the browser:
 
 ---
 
-## Screenshots
-
 | Light Mode | Dark Mode |
 | --- | --- |
 | ![Light Mode Screenshot](lightmode.jpeg) | ![Dark Mode Screenshot](darkmode.jpeg) |
-
 
 ---
 
